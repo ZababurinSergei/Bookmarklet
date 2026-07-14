@@ -1,11 +1,63 @@
-// env-panel.js - ENV Control Panel Bookmarklet
+// env-panel.js - ENV Control Panel Bookmarklet с favicon
 (function () {
+  // ========== FAVICON ДЛЯ ЗАКЛАДКИ ==========
+  // SVG иконка для закладки (зеленый щит с галочкой)
+  const FAVICON_SVG = `data:image/svg+xml,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+      <defs>
+        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+        </linearGradient>
+      </defs>
+      <!-- Фон -->
+      <rect width="64" height="64" rx="12" fill="url(#grad)"/>
+      <!-- Щит -->
+      <path d="M32 8 L14 16 L14 32 C14 46 22 56 32 58 C42 56 50 46 50 32 L50 16 L32 8 Z" 
+            fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
+      <!-- Галочка -->
+      <path d="M22 32 L30 40 L46 24" 
+            stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <!-- Маленькая лупа (знак поиска/отладки) -->
+      <circle cx="16" cy="16" r="6" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" fill="none"/>
+      <line x1="20" y1="20" x2="24" y2="24" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+  `)}`;
+
+  // Альтернативная простая иконка (текстовая)
+  const FAVICON_TEXT = `data:image/svg+xml,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+      <rect width="64" height="64" rx="12" fill="#667eea"/>
+      <text x="32" y="44" font-family="Arial" font-size="28" font-weight="bold" fill="white" text-anchor="middle">🐞</text>
+    </svg>
+  `)}`;
+
+  // Используем иконку с щитом
+  const FAVICON = FAVICON_SVG;
+
+  // ========== ПРОВЕРКА ENV ==========
   if (typeof ENV === 'undefined' && typeof window.ENV === 'undefined') {
     alert('❌ ENV не найден на этой странице!');
     return;
   }
   const env = window.ENV || ENV;
 
+  // ========== ОБНОВЛЕНИЕ FAVICON СТРАНИЦЫ ==========
+  function updateFavicon(iconUrl) {
+    // Удаляем старые favicon
+    document.querySelectorAll('link[rel*="icon"]').forEach(el => el.remove());
+    // Создаем новый
+    const link = document.createElement('link');
+    link.rel = 'icon';
+    link.type = 'image/svg+xml';
+    link.href = iconUrl;
+    document.head.appendChild(link);
+  }
+
+  // ========== ДОБАВЛЯЕМ FAVICON ==========
+  updateFavicon(FAVICON);
+
+  // ========== ГРУППЫ ==========
   const GROUPS = {
     '🌊 Flow': {
       presets: [
@@ -61,66 +113,129 @@
     },
   };
 
+  // ========== УДАЛЕНИЕ СТАРОЙ ПАНЕЛИ ==========
   const oldPanel = document.getElementById('env-control-panel');
   if (oldPanel) oldPanel.remove();
 
+  // ========== СОЗДАНИЕ ПАНЕЛИ ==========
   const panel = document.createElement('div');
   panel.id = 'env-control-panel';
 
-  const saved = localStorage.getItem('env-panel-position');
-  let pos = { x: 20, y: 20 };
-  if (saved) {
+  // Размеры
+  const PANEL_WIDTH = 380;
+  const PANEL_HEIGHT = 500;
+  const MARGIN = 20;
+
+  // Загрузка позиции
+  const savedPos = localStorage.getItem('env-panel-position');
+  let pos = { x: 20, y: 20, unit: 'px' };
+
+  if (savedPos) {
     try {
-      const p = JSON.parse(saved);
-      if (typeof p.x === 'number' && typeof p.y === 'number') pos = p;
+      const p = JSON.parse(savedPos);
+      if (typeof p.x === 'number' && typeof p.y === 'number') {
+        pos = p;
+        if (p.unit === '%') {
+          pos.unit = '%';
+        } else {
+          pos.unit = 'px';
+        }
+      }
     } catch (e) {}
   }
 
+  function calculatePosition() {
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    let left, top;
+
+    if (pos.unit === '%') {
+      left = Math.max(MARGIN, Math.min(winW - PANEL_WIDTH - MARGIN, (pos.x / 100) * winW));
+      top = Math.max(MARGIN, Math.min(winH - PANEL_HEIGHT - MARGIN, (pos.y / 100) * winH));
+    } else {
+      left = Math.max(MARGIN, Math.min(winW - PANEL_WIDTH - MARGIN, pos.x));
+      top = Math.max(MARGIN, Math.min(winH - PANEL_HEIGHT - MARGIN, pos.y));
+    }
+    return { left, top };
+  }
+
+  function savePosition(left, top) {
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+
+    if (winW < 800 || winH < 600) {
+      pos = {
+        x: (left / winW) * 100,
+        y: (top / winH) * 100,
+        unit: '%',
+      };
+    } else {
+      pos = {
+        x: left,
+        y: top,
+        unit: 'px',
+      };
+    }
+    localStorage.setItem('env-panel-position', JSON.stringify(pos));
+  }
+
+  const { left, top } = calculatePosition();
+
+  // ========== СТИЛИ ПАНЕЛИ ==========
   panel.style.cssText = `
     position:fixed;
-    left:${pos.x}px;
-    top:${pos.y}px;
+    left:${left}px;
+    top:${top}px;
+    width:${PANEL_WIDTH}px;
+    height:${PANEL_HEIGHT}px;
     z-index:999999;
     background:rgba(26,26,46,0.95);
     backdrop-filter:blur(20px);
     border:1px solid rgba(255,255,255,0.1);
     border-radius:16px;
-    padding:20px;
-    max-width:380px;
-    max-height:80vh;
-    overflow-y:auto;
+    padding:0;
     color:#fff;
     font-family:Segoe UI,system-ui,sans-serif;
     font-size:13px;
     box-shadow:0 20px 60px rgba(0,0,0,0.8);
-    min-width:320px;
-    scrollbar-width:thin;
-    scrollbar-color:#667eea transparent;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    min-width:280px;
+    min-height:300px;
+    resize:both;
   `;
 
+  // ========== ШАПКА ==========
   const header = document.createElement('div');
   header.style.cssText = `
     display:flex;
     justify-content:space-between;
     align-items:center;
-    margin-bottom:15px;
-    padding-bottom:10px;
+    padding:12px 16px 10px 16px;
     border-bottom:1px solid rgba(255,255,255,0.05);
     cursor:grab;
     user-select:none;
+    flex-shrink:0;
+    background:rgba(26,26,46,0.95);
+    border-radius:16px 16px 0 0;
+    position:sticky;
+    top:0;
+    z-index:1;
+    min-height:44px;
   `;
 
   const cur = env.DEBUG.namespace || 'off';
   header.innerHTML = `
-    <span style="font-weight:bold;font-size:15px;">🔍 ENV Control</span>
-    <div style="display:flex;align-items:center;gap:8px;">
+    <span style="font-weight:bold;font-size:14px;">🔍 ENV Control</span>
+    <div style="display:flex;align-items:center;gap:6px;">
       <span id="env-status" style="
-        font-size:11px;
-        padding:3px 12px;
+        font-size:10px;
+        padding:2px 10px;
         border-radius:12px;
         background:${cur !== 'off' ? 'rgba(0,184,148,0.2)' : 'rgba(255,255,255,0.05)'};
         color:${cur !== 'off' ? '#00b894' : '#636e72'};
-        max-width:120px;
+        max-width:100px;
         overflow:hidden;
         text-overflow:ellipsis;
         white-space:nowrap;
@@ -130,30 +245,80 @@
         border:none;
         color:#8899bb;
         cursor:pointer;
-        font-size:18px;
-        padding:0 5px;
+        font-size:16px;
+        padding:0 4px;
+        transition:color 0.2s;
       ">✕</button>
     </div>
   `;
   panel.appendChild(header);
 
+  // ========== РЕЗАЙЗ ХЭНДЛ ==========
+  const resizeHandle = document.createElement('div');
+  resizeHandle.style.cssText = `
+    position:absolute;
+    bottom:0;
+    right:0;
+    width:16px;
+    height:16px;
+    cursor:nwse-resize;
+    z-index:10;
+    background:linear-gradient(135deg, transparent 50%, rgba(102,126,234,0.3) 50%);
+    border-radius:0 0 16px 0;
+  `;
+  panel.appendChild(resizeHandle);
+
+  // ========== СОДЕРЖИМОЕ ==========
+  const contentWrapper = document.createElement('div');
+  contentWrapper.style.cssText = `
+    padding:12px 16px 16px 16px;
+    overflow-y:auto;
+    flex:1;
+    scrollbar-width:thin;
+    scrollbar-color:#667eea transparent;
+  `;
+
+  // ========== ИНСТРУКЦИЯ ==========
+  const helpText = document.createElement('div');
+  helpText.style.cssText = `
+    font-size:10px;
+    color:#8899bb;
+    padding:6px 10px;
+    background:rgba(255,255,255,0.03);
+    border-radius:6px;
+    margin-bottom:10px;
+    border:1px solid rgba(255,255,255,0.05);
+  `;
+  helpText.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+      <span>💡</span>
+      <span>Клик → применить</span>
+      <span style="color:#445;">|</span>
+      <span style="color:#667eea;">🖱️ Перетащи</span>
+      <span style="color:#445;">|</span>
+      <span style="color:#fdcb6e;">↘️ Ресайз</span>
+    </div>
+  `;
+  contentWrapper.appendChild(helpText);
+
+  // ========== ГРУППЫ ==========
   const groups = document.createElement('div');
-  groups.style.cssText = 'display:flex;flex-direction:column;gap:10px';
+  groups.style.cssText = 'display:flex;flex-direction:column;gap:8px';
   let val = env.DEBUG.namespace || '';
 
   Object.entries(GROUPS).forEach(([name, group]) => {
     const g = document.createElement('div');
     g.style.cssText =
-      'border:1px solid rgba(255,255,255,0.05);border-radius:10px;padding:10px 12px;background:rgba(255,255,255,0.02)';
+      'border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:8px 10px;background:rgba(255,255,255,0.02)';
 
     const t = document.createElement('div');
     t.style.cssText =
-      'font-size:11px;font-weight:bold;color:#8899bb;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px';
+      'font-size:10px;font-weight:bold;color:#8899bb;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px';
     t.textContent = name;
     g.appendChild(t);
 
     const b = document.createElement('div');
-    b.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px';
+    b.style.cssText = 'display:flex;flex-wrap:wrap;gap:3px';
 
     group.presets.forEach(p => {
       const active = val === p.value;
@@ -161,12 +326,12 @@
       btn.textContent = p.name;
       btn.dataset.preset = p.value || '';
       btn.style.cssText = `
-        padding:4px 10px;
+        padding:3px 8px;
         border:1px solid ${active ? '#667eea' : 'rgba(255,255,255,0.05)'};
-        border-radius:5px;
+        border-radius:4px;
         background:${active ? 'rgba(102,126,234,0.3)' : 'rgba(255,255,255,0.03)'};
         color:${active ? '#fff' : '#8899bb'};
-        font-size:11px;
+        font-size:10px;
         cursor:pointer;
         transition:all 0.2s;
         font-family:inherit;
@@ -188,8 +353,10 @@
         const v = btn.dataset.preset;
         if (v) {
           env.debug.enable(v);
+          console.log(`✅ Включен DEBUG: ${v}`);
         } else {
           env.debug.disable();
+          console.log('🔇 DEBUG отключен');
         }
         val = v;
         const s = document.getElementById('env-status');
@@ -211,28 +378,32 @@
     g.appendChild(b);
     groups.appendChild(g);
   });
-  panel.appendChild(groups);
+  contentWrapper.appendChild(groups);
 
+  // ========== БЫСТРЫЕ ДЕЙСТВИЯ ==========
   const actions = document.createElement('div');
   actions.style.cssText =
-    'margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.05);display:flex;gap:6px;flex-wrap:wrap';
+    'margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05);display:flex;gap:4px;flex-wrap:wrap';
 
-  [
+  const actionButtons = [
     {
-      text: '📊 Показать ENV',
+      text: '📊',
       color: '#8899bb',
       bg: 'rgba(255,255,255,0.03)',
+      title: 'Показать ENV',
       action: () => {
-        console.log('ENV:', env.debug.getConfig());
-        alert('ENV:\n' + JSON.stringify(env.debug.getConfig(), null, 2));
+        console.log('📊 ENV Config:', env.debug.getConfig());
+        alert('📊 ENV Config:\n' + JSON.stringify(env.debug.getConfig(), null, 2));
       },
     },
     {
-      text: '🔊 Все включить',
+      text: '🔊 Всё',
       color: '#00b894',
       bg: 'rgba(0,184,148,0.1)',
+      title: 'Включить все логи',
       action: () => {
         env.debug.enable('wasm:*');
+        console.log('✅ Включены все логи: wasm:*');
         const s = document.getElementById('env-status');
         if (s) {
           s.textContent = 'wasm:*';
@@ -248,11 +419,13 @@
       },
     },
     {
-      text: '🔇 Всё отключить',
+      text: '🔇 Выкл',
       color: '#636e72',
       bg: 'rgba(255,255,255,0.03)',
+      title: 'Отключить все логи',
       action: () => {
         env.debug.disable();
+        console.log('🔇 DEBUG отключен');
         const s = document.getElementById('env-status');
         if (s) {
           s.textContent = 'off';
@@ -267,16 +440,19 @@
         });
       },
     },
-  ].forEach(a => {
+  ];
+
+  actionButtons.forEach(a => {
     const btn = document.createElement('button');
     btn.textContent = a.text;
+    btn.title = a.title || '';
     btn.style.cssText = `
-      padding:5px 12px;
+      padding:4px 10px;
       border:1px solid rgba(255,255,255,0.05);
-      border-radius:5px;
+      border-radius:4px;
       background:${a.bg};
       color:${a.color};
-      font-size:11px;
+      font-size:10px;
       cursor:pointer;
       font-family:inherit;
       transition:all 0.2s;
@@ -292,28 +468,70 @@
     btn.onclick = a.action;
     actions.appendChild(btn);
   });
-  panel.appendChild(actions);
+  contentWrapper.appendChild(actions);
 
-  document.getElementById('env-close-btn').onclick = () => {
-    panel.style.transform = 'scale(0.8)';
-    panel.style.opacity = '0';
-    setTimeout(() => {
-      panel.style.display = 'none';
-      localStorage.setItem('env-panel-visible', 'false');
-    }, 300);
-  };
+  // ========== КОМАНДЫ В КОНСОЛИ ==========
+  const commandsInfo = document.createElement('div');
+  commandsInfo.style.cssText = `
+    margin-top:8px;
+    padding:6px 10px;
+    background:rgba(0,0,0,0.3);
+    border-radius:4px;
+    font-size:9px;
+    color:#636e72;
+    font-family:monospace;
+    border:1px solid rgba(255,255,255,0.03);
+  `;
+  commandsInfo.innerHTML = `
+    <div style="color:#8899bb;font-weight:bold;font-size:9px;margin-bottom:2px;">📋 Консоль:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:3px;font-size:9px;">
+      <code style="color:#667eea;">env.debug.enable("wasm:*")</code>
+      <span style="color:#445;">|</span>
+      <code style="color:#667eea;">env.debug.disable()</code>
+      <span style="color:#445;">|</span>
+      <code style="color:#667eea;">env.debug.getConfig()</code>
+    </div>
+  `;
+  contentWrapper.appendChild(commandsInfo);
 
+  panel.appendChild(contentWrapper);
+
+  // ========== ДОБАВЛЯЕМ ПАНЕЛЬ ==========
+  document.body.appendChild(panel);
+
+  // ========== КНОПКА ЗАКРЫТИЯ ==========
+  const closeBtn = document.getElementById('env-close-btn');
+  if (closeBtn) {
+    closeBtn.onclick = e => {
+      e.stopPropagation();
+      panel.style.transform = 'scale(0.8)';
+      panel.style.opacity = '0';
+      panel.style.transition = 'all 0.3s ease';
+      setTimeout(() => {
+        panel.style.display = 'none';
+        localStorage.setItem('env-panel-visible', 'false');
+        // Восстанавливаем исходный favicon при закрытии
+        const originalFavicon = document.querySelector('link[rel="icon"][href*="favicon"]');
+        if (originalFavicon) {
+          updateFavicon(originalFavicon.href);
+        }
+        console.log('❌ Панель закрыта');
+      }, 300);
+    };
+  }
+
+  // ========== DRAG & DROP ==========
   let dragging = false;
-  let startX, startY, panelX, panelY;
+  let startX, startY, panelStartX, panelStartY;
 
   header.onmousedown = e => {
-    if (e.target.tagName === 'BUTTON') return;
+    if (e.target.tagName === 'BUTTON' || e.target.id === 'env-close-btn') return;
     dragging = true;
     startX = e.clientX;
     startY = e.clientY;
     const r = panel.getBoundingClientRect();
-    panelX = r.left;
-    panelY = r.top;
+    panelStartX = r.left;
+    panelStartY = r.top;
     header.style.cursor = 'grabbing';
     document.body.style.userSelect = 'none';
     panel.style.transition = 'none';
@@ -323,8 +541,16 @@
     if (!dragging) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
-    panel.style.left = Math.max(0, panelX + dx) + 'px';
-    panel.style.top = Math.max(0, panelY + dy) + 'px';
+    let newX = Math.max(0, panelStartX + dx);
+    let newY = Math.max(0, panelStartY + dy);
+
+    const maxX = window.innerWidth - parseInt(panel.style.width || PANEL_WIDTH);
+    const maxY = window.innerHeight - parseInt(panel.style.height || PANEL_HEIGHT);
+    newX = Math.min(newX, maxX);
+    newY = Math.min(newY, maxY);
+
+    panel.style.left = newX + 'px';
+    panel.style.top = newY + 'px';
     panel.style.right = 'auto';
     panel.style.bottom = 'auto';
   };
@@ -336,12 +562,109 @@
       document.body.style.userSelect = '';
       panel.style.transition = '';
       const r = panel.getBoundingClientRect();
-      localStorage.setItem('env-panel-position', JSON.stringify({ x: r.left, y: r.top }));
-      localStorage.setItem('env-panel-visible', 'true');
+      savePosition(r.left, r.top);
     }
   };
 
-  document.body.appendChild(panel);
+  // ========== РЕСАЙЗ ==========
+  let isResizing = false;
+  let resizeStartX, resizeStartY;
+  let resizeStartWidth, resizeStartHeight;
+
+  resizeHandle.onmousedown = e => {
+    e.stopPropagation();
+    isResizing = true;
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartWidth = panel.offsetWidth;
+    resizeStartHeight = panel.offsetHeight;
+    document.body.style.userSelect = 'none';
+    panel.style.transition = 'none';
+  };
+
+  document.onmousemove = e => {
+    if (isResizing) {
+      const dx = e.clientX - resizeStartX;
+      const dy = e.clientY - resizeStartY;
+      let newWidth = Math.max(280, resizeStartWidth + dx);
+      let newHeight = Math.max(300, resizeStartHeight + dy);
+
+      const maxW = window.innerWidth - parseInt(panel.style.left || 20) - 10;
+      const maxH = window.innerHeight - parseInt(panel.style.top || 20) - 10;
+      newWidth = Math.min(newWidth, maxW);
+      newHeight = Math.min(newHeight, maxH);
+
+      panel.style.width = newWidth + 'px';
+      panel.style.height = newHeight + 'px';
+    }
+  };
+
+  document.onmouseup = () => {
+    if (isResizing) {
+      isResizing = false;
+      document.body.style.userSelect = '';
+      panel.style.transition = '';
+      localStorage.setItem(
+        'env-panel-size',
+        JSON.stringify({
+          width: panel.offsetWidth,
+          height: panel.offsetHeight,
+        })
+      );
+    }
+    if (dragging) {
+      dragging = false;
+      header.style.cursor = 'grab';
+      document.body.style.userSelect = '';
+      panel.style.transition = '';
+    }
+  };
+
+  // ========== АДАПТАЦИЯ ПРИ РЕСАЙЗЕ ОКНА ==========
+  function adaptToWindow() {
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    const rect = panel.getBoundingClientRect();
+    const panelW = panel.offsetWidth;
+    const panelH = panel.offsetHeight;
+
+    let newLeft = rect.left;
+    let newTop = rect.top;
+
+    if (rect.left + panelW > winW - 10) {
+      newLeft = winW - panelW - 10;
+    }
+    if (rect.top + panelH > winH - 10) {
+      newTop = winH - panelH - 10;
+    }
+    if (rect.left < 0) {
+      newLeft = 10;
+    }
+    if (rect.top < 0) {
+      newTop = 10;
+    }
+
+    if (panelW > winW - 20) {
+      panel.style.width = Math.max(280, winW - 30) + 'px';
+    }
+    if (panelH > winH - 20) {
+      panel.style.height = Math.max(300, winH - 30) + 'px';
+    }
+
+    if (newLeft !== rect.left || newTop !== rect.top) {
+      panel.style.left = newLeft + 'px';
+      panel.style.top = newTop + 'px';
+      savePosition(newLeft, newTop);
+    }
+  }
+
+  let resizeTimeout;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(adaptToWindow, 100);
+  });
+
+  // ========== АНИМАЦИЯ ПОЯВЛЕНИЯ ==========
   panel.style.transform = 'scale(0.9)';
   panel.style.opacity = '0';
   panel.style.transition = 'all 0.3s ease';
@@ -349,15 +672,12 @@
     panel.style.transform = 'scale(1)';
     panel.style.opacity = '1';
   }, 50);
+
   localStorage.setItem('env-panel-visible', 'true');
   console.log('✅ ENV Control загружена!');
-})();
-
-
-
-javascript: (function () {
-  const s = document.createElement('script');
-  s.src =
-    'https://raw.githubusercontent.com/ZababurinSergei/mtproto-mqtt-gateway/refs/heads/master/metaflow/02-config-generator/web/Bookmarklet/env-panel.js?token=GHSAT0AAAAAAD7IHO6FV4P2Y474TJJRUJQS2SWQ3MQ';
-  document.head.appendChild(s);
+  console.log('📋 Доступные команды:');
+  console.log('  env.debug.enable("wasm:*")  - включить логи');
+  console.log('  env.debug.disable()         - отключить логи');
+  console.log('  env.debug.getConfig()       - показать конфиг');
+  console.log('🖱️ Перетащи за шапку | ↘️ Ресайз уголком');
 })();
