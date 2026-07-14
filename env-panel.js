@@ -1,7 +1,6 @@
-// env-panel.js - ENV Control Panel Bookmarklet с favicon
+// env-panel.js - ENV Control Panel Bookmarklet с работающим перетаскиванием
 (function () {
-  // ========== FAVICON ДЛЯ ЗАКЛАДКИ ==========
-  // SVG иконка для закладки (зеленый щит с галочкой)
+  // ========== FAVICON ==========
   const FAVICON_SVG = `data:image/svg+xml,${encodeURIComponent(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
       <defs>
@@ -10,30 +9,25 @@
           <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
         </linearGradient>
       </defs>
-      <!-- Фон -->
       <rect width="64" height="64" rx="12" fill="url(#grad)"/>
-      <!-- Щит -->
       <path d="M32 8 L14 16 L14 32 C14 46 22 56 32 58 C42 56 50 46 50 32 L50 16 L32 8 Z" 
             fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
-      <!-- Галочка -->
       <path d="M22 32 L30 40 L46 24" 
             stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-      <!-- Маленькая лупа (знак поиска/отладки) -->
       <circle cx="16" cy="16" r="6" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" fill="none"/>
       <line x1="20" y1="20" x2="24" y2="24" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round"/>
     </svg>
   `)}`;
 
-  // Альтернативная простая иконка (текстовая)
-  const FAVICON_TEXT = `data:image/svg+xml,${encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-      <rect width="64" height="64" rx="12" fill="#667eea"/>
-      <text x="32" y="44" font-family="Arial" font-size="28" font-weight="bold" fill="white" text-anchor="middle">🐞</text>
-    </svg>
-  `)}`;
-
-  // Используем иконку с щитом
-  const FAVICON = FAVICON_SVG;
+  function updateFavicon(iconUrl) {
+    document.querySelectorAll('link[rel*="icon"]').forEach(el => el.remove());
+    const link = document.createElement('link');
+    link.rel = 'icon';
+    link.type = 'image/svg+xml';
+    link.href = iconUrl;
+    document.head.appendChild(link);
+  }
+  updateFavicon(FAVICON_SVG);
 
   // ========== ПРОВЕРКА ENV ==========
   if (typeof ENV === 'undefined' && typeof window.ENV === 'undefined') {
@@ -41,21 +35,6 @@
     return;
   }
   const env = window.ENV || ENV;
-
-  // ========== ОБНОВЛЕНИЕ FAVICON СТРАНИЦЫ ==========
-  function updateFavicon(iconUrl) {
-    // Удаляем старые favicon
-    document.querySelectorAll('link[rel*="icon"]').forEach(el => el.remove());
-    // Создаем новый
-    const link = document.createElement('link');
-    link.rel = 'icon';
-    link.type = 'image/svg+xml';
-    link.href = iconUrl;
-    document.head.appendChild(link);
-  }
-
-  // ========== ДОБАВЛЯЕМ FAVICON ==========
-  updateFavicon(FAVICON);
 
   // ========== ГРУППЫ ==========
   const GROUPS = {
@@ -121,12 +100,10 @@
   const panel = document.createElement('div');
   panel.id = 'env-control-panel';
 
-  // Размеры
   const PANEL_WIDTH = 380;
   const PANEL_HEIGHT = 500;
   const MARGIN = 20;
 
-  // Загрузка позиции
   const savedPos = localStorage.getItem('env-panel-position');
   let pos = { x: 20, y: 20, unit: 'px' };
 
@@ -181,7 +158,6 @@
 
   const { left, top } = calculatePosition();
 
-  // ========== СТИЛИ ПАНЕЛИ ==========
   panel.style.cssText = `
     position:fixed;
     left:${left}px;
@@ -203,7 +179,7 @@
     overflow:hidden;
     min-width:280px;
     min-height:300px;
-    resize:both;
+    user-select:none;
   `;
 
   // ========== ШАПКА ==========
@@ -224,6 +200,7 @@
     z-index:1;
     min-height:44px;
   `;
+  header.id = 'env-panel-header';
 
   const cur = env.DEBUG.namespace || 'off';
   header.innerHTML = `
@@ -510,42 +487,60 @@
       setTimeout(() => {
         panel.style.display = 'none';
         localStorage.setItem('env-panel-visible', 'false');
-        // Восстанавливаем исходный favicon при закрытии
-        const originalFavicon = document.querySelector('link[rel="icon"][href*="favicon"]');
-        if (originalFavicon) {
-          updateFavicon(originalFavicon.href);
-        }
         console.log('❌ Панель закрыта');
       }, 300);
     };
   }
 
-  // ========== DRAG & DROP ==========
-  let dragging = false;
-  let startX, startY, panelStartX, panelStartY;
+  // ========== ПЕРЕТАСКИВАНИЕ (ИСПРАВЛЕННОЕ) ==========
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let panelStartX = 0;
+  let panelStartY = 0;
 
-  header.onmousedown = e => {
+  function startDrag(e) {
+    // Игнорируем клики по кнопкам
     if (e.target.tagName === 'BUTTON' || e.target.id === 'env-close-btn') return;
-    dragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    const r = panel.getBoundingClientRect();
-    panelStartX = r.left;
-    panelStartY = r.top;
+
+    e.preventDefault();
+    isDragging = true;
+
+    // Получаем позицию мыши
+    const clientX = e.clientX || e.touches?.[0]?.clientX || 0;
+    const clientY = e.clientY || e.touches?.[0]?.clientY || 0;
+
+    dragStartX = clientX;
+    dragStartY = clientY;
+
+    const rect = panel.getBoundingClientRect();
+    panelStartX = rect.left;
+    panelStartY = rect.top;
+
     header.style.cursor = 'grabbing';
     document.body.style.userSelect = 'none';
     panel.style.transition = 'none';
-  };
 
-  document.onmousemove = e => {
-    if (!dragging) return;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
+    // Предотвращаем выделение текста
+    document.body.style.pointerEvents = 'none';
+    panel.style.pointerEvents = 'auto';
+  }
+
+  function moveDrag(e) {
+    if (!isDragging) return;
+    e.preventDefault();
+
+    const clientX = e.clientX || e.touches?.[0]?.clientX || 0;
+    const clientY = e.clientY || e.touches?.[0]?.clientY || 0;
+
+    const dx = clientX - dragStartX;
+    const dy = clientY - dragStartY;
+
     let newX = Math.max(0, panelStartX + dx);
     let newY = Math.max(0, panelStartY + dy);
 
-    const maxX = window.innerWidth - parseInt(panel.style.width || PANEL_WIDTH);
-    const maxY = window.innerHeight - parseInt(panel.style.height || PANEL_HEIGHT);
+    const maxX = window.innerWidth - panel.offsetWidth;
+    const maxY = window.innerHeight - panel.offsetHeight;
     newX = Math.min(newX, maxX);
     newY = Math.min(newY, maxY);
 
@@ -553,57 +548,86 @@
     panel.style.top = newY + 'px';
     panel.style.right = 'auto';
     panel.style.bottom = 'auto';
-  };
+  }
 
-  document.onmouseup = () => {
-    if (dragging) {
-      dragging = false;
+  function endDrag() {
+    if (isDragging) {
+      isDragging = false;
       header.style.cursor = 'grab';
       document.body.style.userSelect = '';
+      document.body.style.pointerEvents = '';
       panel.style.transition = '';
-      const r = panel.getBoundingClientRect();
-      savePosition(r.left, r.top);
+
+      const rect = panel.getBoundingClientRect();
+      savePosition(rect.left, rect.top);
     }
-  };
+  }
+
+  // События мыши
+  header.addEventListener('mousedown', startDrag);
+  document.addEventListener('mousemove', moveDrag);
+  document.addEventListener('mouseup', endDrag);
+
+  // События для touch (мобильные устройства)
+  header.addEventListener('touchstart', startDrag, { passive: false });
+  document.addEventListener('touchmove', moveDrag, { passive: false });
+  document.addEventListener('touchend', endDrag);
 
   // ========== РЕСАЙЗ ==========
   let isResizing = false;
-  let resizeStartX, resizeStartY;
-  let resizeStartWidth, resizeStartHeight;
+  let resizeStartX = 0;
+  let resizeStartY = 0;
+  let resizeStartWidth = 0;
+  let resizeStartHeight = 0;
 
-  resizeHandle.onmousedown = e => {
+  function startResize(e) {
+    e.preventDefault();
     e.stopPropagation();
     isResizing = true;
-    resizeStartX = e.clientX;
-    resizeStartY = e.clientY;
+
+    const clientX = e.clientX || e.touches?.[0]?.clientX || 0;
+    const clientY = e.clientY || e.touches?.[0]?.clientY || 0;
+
+    resizeStartX = clientX;
+    resizeStartY = clientY;
     resizeStartWidth = panel.offsetWidth;
     resizeStartHeight = panel.offsetHeight;
+
     document.body.style.userSelect = 'none';
+    document.body.style.pointerEvents = 'none';
+    panel.style.pointerEvents = 'auto';
     panel.style.transition = 'none';
-  };
+  }
 
-  document.onmousemove = e => {
-    if (isResizing) {
-      const dx = e.clientX - resizeStartX;
-      const dy = e.clientY - resizeStartY;
-      let newWidth = Math.max(280, resizeStartWidth + dx);
-      let newHeight = Math.max(300, resizeStartHeight + dy);
+  function moveResize(e) {
+    if (!isResizing) return;
+    e.preventDefault();
 
-      const maxW = window.innerWidth - parseInt(panel.style.left || 20) - 10;
-      const maxH = window.innerHeight - parseInt(panel.style.top || 20) - 10;
-      newWidth = Math.min(newWidth, maxW);
-      newHeight = Math.min(newHeight, maxH);
+    const clientX = e.clientX || e.touches?.[0]?.clientX || 0;
+    const clientY = e.clientY || e.touches?.[0]?.clientY || 0;
 
-      panel.style.width = newWidth + 'px';
-      panel.style.height = newHeight + 'px';
-    }
-  };
+    const dx = clientX - resizeStartX;
+    const dy = clientY - resizeStartY;
 
-  document.onmouseup = () => {
+    let newWidth = Math.max(280, resizeStartWidth + dx);
+    let newHeight = Math.max(300, resizeStartHeight + dy);
+
+    const maxW = window.innerWidth - parseInt(panel.style.left || 20) - 10;
+    const maxH = window.innerHeight - parseInt(panel.style.top || 20) - 10;
+    newWidth = Math.min(newWidth, maxW);
+    newHeight = Math.min(newHeight, maxH);
+
+    panel.style.width = newWidth + 'px';
+    panel.style.height = newHeight + 'px';
+  }
+
+  function endResize() {
     if (isResizing) {
       isResizing = false;
       document.body.style.userSelect = '';
+      document.body.style.pointerEvents = '';
       panel.style.transition = '';
+
       localStorage.setItem(
         'env-panel-size',
         JSON.stringify({
@@ -612,13 +636,14 @@
         })
       );
     }
-    if (dragging) {
-      dragging = false;
-      header.style.cursor = 'grab';
-      document.body.style.userSelect = '';
-      panel.style.transition = '';
-    }
-  };
+  }
+
+  resizeHandle.addEventListener('mousedown', startResize);
+  resizeHandle.addEventListener('touchstart', startResize, { passive: false });
+  document.addEventListener('mousemove', moveResize);
+  document.addEventListener('touchmove', moveResize, { passive: false });
+  document.addEventListener('mouseup', endResize);
+  document.addEventListener('touchend', endResize);
 
   // ========== АДАПТАЦИЯ ПРИ РЕСАЙЗЕ ОКНА ==========
   function adaptToWindow() {
