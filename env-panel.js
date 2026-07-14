@@ -1,33 +1,28 @@
-// env-panel.js - ENV Control Panel Bookmarklet с работающим перетаскиванием
+// env-panel.js - ENV Control Panel Bookmarklet
+// Фикс: переключение видимости при каждом запуске
 (function () {
   // ========== FAVICON ==========
-  const FAVICON_SVG = `data:image/svg+xml,${encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-      <defs>
-        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
-          <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
-        </linearGradient>
-      </defs>
-      <rect width="64" height="64" rx="12" fill="url(#grad)"/>
-      <path d="M32 8 L14 16 L14 32 C14 46 22 56 32 58 C42 56 50 46 50 32 L50 16 L32 8 Z" 
-            fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
-      <path d="M22 32 L30 40 L46 24" 
-            stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-      <circle cx="16" cy="16" r="6" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" fill="none"/>
-      <line x1="20" y1="20" x2="24" y2="24" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round"/>
-    </svg>
-  `)}`;
-
-  function updateFavicon(iconUrl) {
+  function updateFavicon() {
     document.querySelectorAll('link[rel*="icon"]').forEach(el => el.remove());
     const link = document.createElement('link');
     link.rel = 'icon';
-    link.type = 'image/svg+xml';
-    link.href = iconUrl;
+    link.type = 'image/png';
+    link.href =
+      'https://raw.githubusercontent.com/ZababurinSergei/Bookmarklet/refs/heads/main/favicon.png';
     document.head.appendChild(link);
+
+    const fallback = document.createElement('link');
+    fallback.rel = 'icon';
+    fallback.type = 'image/svg+xml';
+    fallback.href = `data:image/svg+xml,${encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+        <rect width="64" height="64" rx="12" fill="#667eea"/>
+        <text x="32" y="44" font-family="Arial" font-size="28" font-weight="bold" fill="white" text-anchor="middle">🐞</text>
+      </svg>
+    `)}`;
+    document.head.appendChild(fallback);
   }
-  updateFavicon(FAVICON_SVG);
+  updateFavicon();
 
   // ========== ПРОВЕРКА ENV ==========
   if (typeof ENV === 'undefined' && typeof window.ENV === 'undefined') {
@@ -100,70 +95,102 @@
   const panel = document.createElement('div');
   panel.id = 'env-control-panel';
 
-  const PANEL_WIDTH = 380;
-  const PANEL_HEIGHT = 500;
+  // ========== ЗАГРУЗКА СОХРАНЕННЫХ ПАРАМЕТРОВ ==========
+  const DEFAULT_WIDTH = 380;
+  const DEFAULT_HEIGHT = 500;
   const MARGIN = 20;
 
   const savedPos = localStorage.getItem('env-panel-position');
-  let pos = { x: 20, y: 20, unit: 'px' };
-
+  let pos = { x: MARGIN, y: MARGIN, unit: 'px' };
   if (savedPos) {
     try {
       const p = JSON.parse(savedPos);
       if (typeof p.x === 'number' && typeof p.y === 'number') {
         pos = p;
-        if (p.unit === '%') {
-          pos.unit = '%';
-        } else {
-          pos.unit = 'px';
-        }
+        pos.unit = p.unit || 'px';
       }
     } catch (e) {}
   }
 
+  const savedSize = localStorage.getItem('env-panel-size');
+  let size = { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
+  if (savedSize) {
+    try {
+      const s = JSON.parse(savedSize);
+      if (typeof s.width === 'number' && s.width > 200) size.width = s.width;
+      if (typeof s.height === 'number' && s.height > 200) size.height = s.height;
+    } catch (e) {}
+  }
+
+  // ========== КЛЮЧЕВОЕ: ПРОВЕРКА И ПЕРЕКЛЮЧЕНИЕ ВИДИМОСТИ ==========
+  // Читаем текущее состояние видимости
+  const currentVisible = localStorage.getItem('env-panel-visible') === 'true';
+
+  // Инвертируем состояние при каждом запуске (toggle)
+  const newVisible = !currentVisible;
+
+  // Сохраняем новое состояние
+  localStorage.setItem('env-panel-visible', String(newVisible));
+
+  console.log(
+    `🔄 Переключение видимости: ${currentVisible ? 'видима' : 'скрыта'} → ${newVisible ? 'видима' : 'скрыта'}`
+  );
+
+  // ========== РАСЧЕТ ПОЗИЦИИ ==========
   function calculatePosition() {
     const winW = window.innerWidth;
     const winH = window.innerHeight;
     let left, top;
 
     if (pos.unit === '%') {
-      left = Math.max(MARGIN, Math.min(winW - PANEL_WIDTH - MARGIN, (pos.x / 100) * winW));
-      top = Math.max(MARGIN, Math.min(winH - PANEL_HEIGHT - MARGIN, (pos.y / 100) * winH));
+      left = Math.max(MARGIN, Math.min(winW - size.width - MARGIN, (pos.x / 100) * winW));
+      top = Math.max(MARGIN, Math.min(winH - size.height - MARGIN, (pos.y / 100) * winH));
     } else {
-      left = Math.max(MARGIN, Math.min(winW - PANEL_WIDTH - MARGIN, pos.x));
-      top = Math.max(MARGIN, Math.min(winH - PANEL_HEIGHT - MARGIN, pos.y));
+      left = Math.max(MARGIN, Math.min(winW - size.width - MARGIN, pos.x));
+      top = Math.max(MARGIN, Math.min(winH - size.height - MARGIN, pos.y));
     }
     return { left, top };
   }
 
-  function savePosition(left, top) {
+  // ========== СОХРАНЕНИЕ СОСТОЯНИЯ ==========
+  function savePanelState() {
+    const rect = panel.getBoundingClientRect();
     const winW = window.innerWidth;
     const winH = window.innerHeight;
 
     if (winW < 800 || winH < 600) {
       pos = {
-        x: (left / winW) * 100,
-        y: (top / winH) * 100,
+        x: (rect.left / winW) * 100,
+        y: (rect.top / winH) * 100,
         unit: '%',
       };
     } else {
       pos = {
-        x: left,
-        y: top,
+        x: rect.left,
+        y: rect.top,
         unit: 'px',
       };
     }
     localStorage.setItem('env-panel-position', JSON.stringify(pos));
+    localStorage.setItem(
+      'env-panel-size',
+      JSON.stringify({
+        width: panel.offsetWidth,
+        height: panel.offsetHeight,
+      })
+    );
+    // НЕ сохраняем видимость здесь - она управляется отдельно
   }
 
+  // ========== ПРИМЕНЕНИЕ ПАРАМЕТРОВ ==========
   const { left, top } = calculatePosition();
 
   panel.style.cssText = `
     position:fixed;
     left:${left}px;
     top:${top}px;
-    width:${PANEL_WIDTH}px;
-    height:${PANEL_HEIGHT}px;
+    width:${size.width}px;
+    height:${size.height}px;
     z-index:999999;
     background:rgba(26,26,46,0.95);
     backdrop-filter:blur(20px);
@@ -174,7 +201,7 @@
     font-family:Segoe UI,system-ui,sans-serif;
     font-size:13px;
     box-shadow:0 20px 60px rgba(0,0,0,0.8);
-    display:flex;
+    display:${newVisible ? 'flex' : 'none'};
     flex-direction:column;
     overflow:hidden;
     min-width:280px;
@@ -184,6 +211,7 @@
 
   // ========== ШАПКА ==========
   const header = document.createElement('div');
+  header.id = 'env-panel-header';
   header.style.cssText = `
     display:flex;
     justify-content:space-between;
@@ -200,7 +228,6 @@
     z-index:1;
     min-height:44px;
   `;
-  header.id = 'env-panel-header';
 
   const cur = env.DEBUG.namespace || 'off';
   header.innerHTML = `
@@ -274,6 +301,8 @@
       <span style="color:#667eea;">🖱️ Перетащи</span>
       <span style="color:#445;">|</span>
       <span style="color:#fdcb6e;">↘️ Ресайз</span>
+      <span style="color:#445;">|</span>
+      <span style="color:#ff6b6b;">✕ Закрыть</span>
     </div>
   `;
   contentWrapper.appendChild(helpText);
@@ -481,32 +510,35 @@
   if (closeBtn) {
     closeBtn.onclick = e => {
       e.stopPropagation();
+
+      // Сохраняем позицию и размеры
+      savePanelState();
+      // Устанавливаем видимость в false (панель скрыта)
+      localStorage.setItem('env-panel-visible', 'false');
+
       panel.style.transform = 'scale(0.8)';
       panel.style.opacity = '0';
       panel.style.transition = 'all 0.3s ease';
       setTimeout(() => {
         panel.style.display = 'none';
-        localStorage.setItem('env-panel-visible', 'false');
-        console.log('❌ Панель закрыта');
+        console.log('❌ Панель закрыта (состояние: скрыта)');
+        console.log('💡 Нажмите закладку снова, чтобы открыть');
       }, 300);
     };
   }
 
-  // ========== ПЕРЕТАСКИВАНИЕ (ИСПРАВЛЕННОЕ) ==========
+  // ========== ПЕРЕТАСКИВАНИЕ ==========
   let isDragging = false;
-  let dragStartX = 0;
-  let dragStartY = 0;
-  let panelStartX = 0;
-  let panelStartY = 0;
+  let dragStartX = 0,
+    dragStartY = 0;
+  let panelStartX = 0,
+    panelStartY = 0;
 
   function startDrag(e) {
-    // Игнорируем клики по кнопкам
     if (e.target.tagName === 'BUTTON' || e.target.id === 'env-close-btn') return;
-
     e.preventDefault();
     isDragging = true;
 
-    // Получаем позицию мыши
     const clientX = e.clientX || e.touches?.[0]?.clientX || 0;
     const clientY = e.clientY || e.touches?.[0]?.clientY || 0;
 
@@ -519,11 +551,9 @@
 
     header.style.cursor = 'grabbing';
     document.body.style.userSelect = 'none';
-    panel.style.transition = 'none';
-
-    // Предотвращаем выделение текста
     document.body.style.pointerEvents = 'none';
     panel.style.pointerEvents = 'auto';
+    panel.style.transition = 'none';
   }
 
   function moveDrag(e) {
@@ -557,28 +587,23 @@
       document.body.style.userSelect = '';
       document.body.style.pointerEvents = '';
       panel.style.transition = '';
-
-      const rect = panel.getBoundingClientRect();
-      savePosition(rect.left, rect.top);
+      savePanelState();
     }
   }
 
-  // События мыши
   header.addEventListener('mousedown', startDrag);
   document.addEventListener('mousemove', moveDrag);
   document.addEventListener('mouseup', endDrag);
-
-  // События для touch (мобильные устройства)
   header.addEventListener('touchstart', startDrag, { passive: false });
   document.addEventListener('touchmove', moveDrag, { passive: false });
   document.addEventListener('touchend', endDrag);
 
   // ========== РЕСАЙЗ ==========
   let isResizing = false;
-  let resizeStartX = 0;
-  let resizeStartY = 0;
-  let resizeStartWidth = 0;
-  let resizeStartHeight = 0;
+  let resizeStartX = 0,
+    resizeStartY = 0;
+  let resizeStartWidth = 0,
+    resizeStartHeight = 0;
 
   function startResize(e) {
     e.preventDefault();
@@ -627,14 +652,7 @@
       document.body.style.userSelect = '';
       document.body.style.pointerEvents = '';
       panel.style.transition = '';
-
-      localStorage.setItem(
-        'env-panel-size',
-        JSON.stringify({
-          width: panel.offsetWidth,
-          height: panel.offsetHeight,
-        })
-      );
+      savePanelState();
     }
   }
 
@@ -646,6 +664,7 @@
   document.addEventListener('touchend', endResize);
 
   // ========== АДАПТАЦИЯ ПРИ РЕСАЙЗЕ ОКНА ==========
+  let adaptTimeout;
   function adaptToWindow() {
     const winW = window.innerWidth;
     const winH = window.innerHeight;
@@ -656,18 +675,10 @@
     let newLeft = rect.left;
     let newTop = rect.top;
 
-    if (rect.left + panelW > winW - 10) {
-      newLeft = winW - panelW - 10;
-    }
-    if (rect.top + panelH > winH - 10) {
-      newTop = winH - panelH - 10;
-    }
-    if (rect.left < 0) {
-      newLeft = 10;
-    }
-    if (rect.top < 0) {
-      newTop = 10;
-    }
+    if (rect.left + panelW > winW - 10) newLeft = winW - panelW - 10;
+    if (rect.top + panelH > winH - 10) newTop = winH - panelH - 10;
+    if (rect.left < 0) newLeft = 10;
+    if (rect.top < 0) newTop = 10;
 
     if (panelW > winW - 20) {
       panel.style.width = Math.max(280, winW - 30) + 'px';
@@ -679,30 +690,36 @@
     if (newLeft !== rect.left || newTop !== rect.top) {
       panel.style.left = newLeft + 'px';
       panel.style.top = newTop + 'px';
-      savePosition(newLeft, newTop);
+      savePanelState();
     }
   }
 
-  let resizeTimeout;
   window.addEventListener('resize', () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(adaptToWindow, 100);
+    clearTimeout(adaptTimeout);
+    adaptTimeout = setTimeout(adaptToWindow, 100);
   });
 
   // ========== АНИМАЦИЯ ПОЯВЛЕНИЯ ==========
-  panel.style.transform = 'scale(0.9)';
-  panel.style.opacity = '0';
-  panel.style.transition = 'all 0.3s ease';
-  setTimeout(() => {
-    panel.style.transform = 'scale(1)';
-    panel.style.opacity = '1';
-  }, 50);
+  if (newVisible) {
+    panel.style.transform = 'scale(0.9)';
+    panel.style.opacity = '0';
+    panel.style.transition = 'all 0.3s ease';
+    setTimeout(() => {
+      panel.style.transform = 'scale(1)';
+      panel.style.opacity = '1';
+    }, 50);
+  }
 
-  localStorage.setItem('env-panel-visible', 'true');
   console.log('✅ ENV Control загружена!');
+  console.log(`📌 Состояние: ${newVisible ? '🟢 ПАНЕЛЬ ВИДИМА' : '🔴 ПАНЕЛЬ СКРЫТА'}`);
+  console.log(`📐 Размер: ${size.width}x${size.height}`);
+  console.log(
+    `📍 Позиция: ${pos.x}${pos.unit === '%' ? '%' : 'px'}, ${pos.y}${pos.unit === '%' ? '%' : 'px'}`
+  );
   console.log('📋 Доступные команды:');
   console.log('  env.debug.enable("wasm:*")  - включить логи');
   console.log('  env.debug.disable()         - отключить логи');
   console.log('  env.debug.getConfig()       - показать конфиг');
   console.log('🖱️ Перетащи за шапку | ↘️ Ресайз уголком');
+  console.log('💡 Нажмите закладку снова, чтобы скрыть/показать');
 })();
