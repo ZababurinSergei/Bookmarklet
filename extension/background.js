@@ -1,5 +1,5 @@
 // packages/mtproto-mqtt-gateway/metaflow/02-config-generator/web/Bookmarklet/extension/background.js
-// ИСПРАВЛЕНО: Убраны бесконечные циклы и зависания
+// ИСПРАВЛЕНО: Повторный клик фокусирует существующее окно, а не создаёт новое
 
 // ============================================================
 // 1. КОНСТАНТЫ И КОНФИГУРАЦИЯ
@@ -79,6 +79,8 @@ const CONFIG = {
   windowWidth: 540,
   windowHeight: 620,
   windowOffset: 10,
+  // ID открытого окна расширения (для фокусировки)
+  extensionWindowId: null,
 };
 
 // ============================================================
@@ -261,272 +263,118 @@ function processBookmark(bookmark) {
 }
 
 // ============================================================
-// 4. ПОИСК БУКМАРКЛЕТА ПО URL ИЛИ НАЗВАНИЮ
-// ============================================================
-
-async function findBookmarkByUrl(url, requestDetails = {}) {
-  if (isIgnoredUrl(url)) {
-    logger.debug(`⏭️ Игнорируем системный URL: ${url}`);
-    return null;
-  }
-
-  logger.debug(`🔍 Поиск закладки по URL: ${url}`);
-
-  if (CONFIG.cache.has(url)) {
-    const cached = CONFIG.cache.get(url);
-    if (Date.now() - cached.timestamp < CONFIG.cacheTTL) {
-      logger.debug(`✅ Найдено в кеше: ${cached.data.title}`);
-      return cached.data;
-    }
-    CONFIG.cache.delete(url);
-  }
-
-  try {
-    const bookmarks = await chrome.bookmarks.search({ url: url });
-    if (bookmarks && bookmarks.length > 0) {
-      const bookmark = bookmarks[0];
-      const result = processBookmark(bookmark);
-      const path = await getBookmarkPath(bookmark.parentId);
-      result.path = path;
-
-      CONFIG.cache.set(url, { data: result, timestamp: Date.now() });
-
-      if (requestDetails.source === 'bookmarklet' || requestDetails.source === 'content_script') {
-        logger.logBookmarkRequest(url, result, requestDetails);
-      }
-      return result;
-    }
-
-    let searchTitle = requestDetails.bookmarkletName || requestDetails.title;
-
-    if (searchTitle) {
-      logger.debug(`🔍 Поиск по названию: "${searchTitle}"`);
-
-      const allBookmarks = await chrome.bookmarks.search({ query: 'javascript:' });
-
-      for (const bm of allBookmarks) {
-        if (bm.url && bm.url.startsWith('javascript:')) {
-          const titleMatch = bm.title && bm.title.toLowerCase().includes(searchTitle.toLowerCase());
-          const searchInTitle = searchTitle
-            .toLowerCase()
-            .includes(bm.title ? bm.title.toLowerCase() : '');
-
-          if (titleMatch || searchInTitle) {
-            logger.info(`✅ Найден букмарклет по названию: "${bm.title}"`);
-            const result = processBookmark(bm);
-            const path = await getBookmarkPath(bm.parentId);
-            result.path = path;
-
-            CONFIG.cache.set(url, { data: result, timestamp: Date.now() });
-
-            if (
-              requestDetails.source === 'bookmarklet' ||
-              requestDetails.source === 'content_script'
-            ) {
-              logger.logBookmarkRequest(url, result, requestDetails);
-            }
-            return result;
-          }
-        }
-      }
-    }
-
-    if (requestDetails.tabTitle) {
-      logger.debug(`🔍 Поиск по заголовку страницы: "${requestDetails.tabTitle}"`);
-
-      const allBookmarks = await chrome.bookmarks.search({ query: 'javascript:' });
-      for (const bm of allBookmarks) {
-        if (bm.url && bm.url.startsWith('javascript:')) {
-          const titleMatch =
-            bm.title && requestDetails.tabTitle.toLowerCase().includes(bm.title.toLowerCase());
-          if (titleMatch) {
-            logger.info(`✅ Найден букмарклет по заголовку страницы: "${bm.title}"`);
-            const result = processBookmark(bm);
-            const path = await getBookmarkPath(bm.parentId);
-            result.path = path;
-
-            CONFIG.cache.set(url, { data: result, timestamp: Date.now() });
-
-            if (
-              requestDetails.source === 'bookmarklet' ||
-              requestDetails.source === 'content_script'
-            ) {
-              logger.logBookmarkRequest(url, result, requestDetails);
-            }
-            return result;
-          }
-        }
-      }
-    }
-
-    const baseUrl = url.split('?')[0].split('#')[0];
-    if (baseUrl !== url) {
-      logger.debug(`🔍 Пробуем базовый URL: ${baseUrl}`);
-      const bookmarks = await chrome.bookmarks.search({ url: baseUrl });
-      if (bookmarks && bookmarks.length > 0) {
-        const bookmark = bookmarks[0];
-        const result = processBookmark(bookmark);
-        const path = await getBookmarkPath(bookmark.parentId);
-        result.path = path;
-
-        CONFIG.cache.set(url, { data: result, timestamp: Date.now() });
-
-        if (requestDetails.source === 'bookmarklet' || requestDetails.source === 'content_script') {
-          logger.logBookmarkRequest(url, result, requestDetails);
-        }
-        return result;
-      }
-    }
-
-    logger.debug(`ℹ️ Закладка не найдена для: ${url}`);
-    return null;
-  } catch (error) {
-    logger.error(`❌ Ошибка поиска: ${error.message}`);
-    return null;
-  }
-}
-
-// ============================================================
-// 5. ПОЛУЧЕНИЕ ВСЕХ ЗАКЛАДОК
-// ============================================================
-
-async function loadAllBookmarks() {
-  logger.info('📑 Загрузка всех закладок...');
-
-  try {
-    const tree = await chrome.bookmarks.getTree();
-    const allBookmarks = [];
-    const bookmarklets = [];
-    const folders = [];
-
-    function traverseBookmarks(node, path = '') {
-      if (node.url) {
-        const isBookmarklet = node.url.startsWith('javascript:');
-        const bookmark = {
-          id: node.id,
-          title: node.title || 'Без названия',
-          url: node.url,
-          path: path || 'Корень',
-          isBookmarklet: isBookmarklet,
-          type: isBookmarklet ? 'bookmarklet' : 'url',
-          parentId: node.parentId,
-        };
-        allBookmarks.push(bookmark);
-        if (isBookmarklet) {
-          bookmarklets.push(bookmark);
-        }
-      }
-
-      if (node.children) {
-        const currentPath = path ? `${path} > ${node.title || 'Корень'}` : node.title || 'Корень';
-        if (node.title && !node.url) {
-          folders.push({
-            id: node.id,
-            title: node.title,
-            path: path || 'Корень',
-            childrenCount: node.children.length,
-          });
-        }
-        for (const child of node.children) {
-          traverseBookmarks(child, currentPath);
-        }
-      }
-    }
-
-    for (const root of tree) {
-      traverseBookmarks(root, '');
-    }
-
-    CONFIG.allBookmarks = allBookmarks;
-    CONFIG.bookmarklets = bookmarklets;
-    CONFIG.folders = folders;
-
-    logger.info('═══════════════════════════════════════════════════════════');
-    logger.info(`📊 СТАТИСТИКА ЗАКЛАДОК`);
-    logger.info(`   📑 Всего закладок: ${allBookmarks.length}`);
-    logger.info(`   📌 Букмарклетов: ${bookmarklets.length}`);
-    logger.info(`   📁 Папок: ${folders.length}`);
-    logger.info('═══════════════════════════════════════════════════════════');
-
-    if (bookmarklets.length > 0) {
-      logger.info('📋 СПИСОК БУКМАРКЛЕТОВ:');
-      for (const bm of bookmarklets) {
-        const urlPreview = bm.url.substring(0, 50) + (bm.url.length > 50 ? '...' : '');
-        logger.info(`   📌 ${bm.title}`);
-        logger.info(`      📂 ${bm.path}`);
-        logger.info(`      🔗 ${urlPreview}`);
-        logger.info(`      🆔 ${bm.id}`);
-        logger.info('   ──────────────────────────────');
-      }
-    } else {
-      logger.warn('⚠️ Букмарклеты не найдены');
-    }
-
-    CONFIG.bookmarksCache = {
-      all: allBookmarks,
-      bookmarklets: bookmarklets,
-      folders: folders,
-      timestamp: Date.now(),
-    };
-
-    return { allBookmarks, bookmarklets, folders };
-  } catch (error) {
-    logger.error(`❌ Ошибка загрузки: ${error.message}`);
-    return null;
-  }
-}
-
-// ============================================================
-// 6. ОТКРЫТИЕ ОКНА КАК МЕНЮ В ПРАВОМ ВЕРХНЕМ УГЛУ
+// 4. ОТКРЫТИЕ ОКНА С ФОКУСИРОВКОЙ (ИСПРАВЛЕНО)
 // ============================================================
 
 function openExtensionWindow() {
-  logger.info('📂 Открытие окна расширения как меню...');
+  logger.info('📂 Открытие окна расширения...');
 
-  chrome.windows.getCurrent(currentWindow => {
-    chrome.system.display.getInfo(displays => {
-      let screenWidth = 1920;
-      let screenHeight = 1080;
+  // ============================================================
+  // 1. СНАЧАЛА ПРОВЕРЯЕМ, НЕТ ЛИ УЖЕ ОТКРЫТОГО ОКНА
+  // ============================================================
 
-      if (displays && displays.length > 0) {
-        const primary = displays[0];
-        screenWidth = primary.workArea.width || primary.bounds.width || 1920;
-        screenHeight = primary.workArea.height || primary.bounds.height || 1080;
+  // Проверяем по сохранённому ID
+  if (CONFIG.extensionWindowId) {
+    chrome.windows.get(CONFIG.extensionWindowId, window => {
+      if (!chrome.runtime.lastError && window) {
+        // Окно существует — фокусируем его
+        logger.info(`🔄 Фокусировка существующего окна (ID: ${window.id})`);
+        chrome.windows.update(window.id, { focused: true });
+        return;
       }
+      // Окно не существует — очищаем ID и создаём новое
+      logger.info('🗑️ Сохранённый ID окна недействителен, создаём новое');
+      CONFIG.extensionWindowId = null;
+      createNewWindow();
+    });
+    return;
+  }
 
-      const left = screenWidth - CONFIG.windowWidth - CONFIG.windowOffset;
-      const top = CONFIG.windowOffset + 40;
+  // ============================================================
+  // 2. ПОИСК ОТКРЫТОГО ОКНА ПО URL
+  // ============================================================
 
-      logger.debug(`📐 Экран: ${screenWidth}x${screenHeight}, Окно: ${left}, ${top}`);
+  chrome.windows.getAll({ populate: true }, windows => {
+    const popupUrl = chrome.runtime.getURL('popup.html');
 
-      chrome.windows.create(
-        {
-          url: chrome.runtime.getURL('popup.html'),
-          type: 'popup',
-          width: CONFIG.windowWidth,
-          height: CONFIG.windowHeight,
-          left: Math.max(0, left),
-          top: Math.max(0, top),
-          focused: true,
-        },
-        window => {
-          if (window) {
-            logger.info(`📂 Окно расширения открыто (ID: ${window.id})`);
-          } else {
-            logger.warn('⚠️ Не удалось открыть окно в правом углу, открываем по центру');
-            chrome.windows.create({
-              url: chrome.runtime.getURL('popup.html'),
-              type: 'popup',
-              width: CONFIG.windowWidth,
-              height: CONFIG.windowHeight,
-              focused: true,
-            });
+    for (const win of windows) {
+      if (win.tabs) {
+        for (const tab of win.tabs) {
+          if (tab.url && tab.url.includes('popup.html')) {
+            // Нашли окно с popup — фокусируем его
+            logger.info(`🔄 Найдено открытое окно (ID: ${win.id}), фокусируем`);
+            CONFIG.extensionWindowId = win.id;
+            chrome.windows.update(win.id, { focused: true });
+            return;
           }
         }
-      );
-    });
+      }
+    }
+
+    // ============================================================
+    // 3. ОКНО НЕ НАЙДЕНО — СОЗДАЁМ НОВОЕ
+    // ============================================================
+
+    createNewWindow();
   });
 }
+
+// ============================================================
+// 5. СОЗДАНИЕ НОВОГО ОКНА
+// ============================================================
+
+function createNewWindow() {
+  logger.info('🆕 Создание нового окна...');
+
+  chrome.system.display.getInfo(displays => {
+    let screenWidth = 1920;
+    let screenHeight = 1080;
+
+    if (displays && displays.length > 0) {
+      const primary = displays[0];
+      screenWidth = primary.workArea.width || primary.bounds.width || 1920;
+      screenHeight = primary.workArea.height || primary.bounds.height || 1080;
+    }
+
+    const left = screenWidth - CONFIG.windowWidth - CONFIG.windowOffset;
+    const top = CONFIG.windowOffset + 40;
+
+    logger.debug(`📐 Экран: ${screenWidth}x${screenHeight}, Окно: ${left}, ${top}`);
+
+    chrome.windows.create(
+      {
+        url: chrome.runtime.getURL('popup.html'),
+        type: 'popup',
+        width: CONFIG.windowWidth,
+        height: CONFIG.windowHeight,
+        left: Math.max(0, left),
+        top: Math.max(0, top),
+        focused: true,
+      },
+      window => {
+        if (window) {
+          CONFIG.extensionWindowId = window.id;
+          logger.info(`✅ Окно расширения создано (ID: ${window.id})`);
+
+          // Слушаем закрытие окна, чтобы очистить ID
+          chrome.windows.onRemoved.addListener(function onWindowRemoved(windowId) {
+            if (windowId === CONFIG.extensionWindowId) {
+              logger.info(`🗑️ Окно закрыто (ID: ${windowId}), очищаем ID`);
+              CONFIG.extensionWindowId = null;
+              chrome.windows.onRemoved.removeListener(onWindowRemoved);
+            }
+          });
+        } else {
+          logger.warn('⚠️ Не удалось создать окно');
+        }
+      }
+    );
+  });
+}
+
+// ============================================================
+// 6. ОБРАБОТЧИК КЛИКА ПО ИКОНКЕ
+// ============================================================
 
 chrome.action.onClicked.addListener(tab => {
   openExtensionWindow();
@@ -660,6 +508,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           logger.error(`❌ Ошибка закрытия окна: ${chrome.runtime.lastError.message}`);
           sendResponse({ success: false, error: chrome.runtime.lastError.message });
         } else {
+          CONFIG.extensionWindowId = null;
           logger.info('🗑️ Окно расширения закрыто');
           sendResponse({ success: true });
         }
@@ -670,6 +519,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           for (const tab of win.tabs) {
             if (tab.url && tab.url.includes('popup.html')) {
               chrome.windows.remove(win.id, () => {
+                CONFIG.extensionWindowId = null;
                 logger.info('🗑️ Окно расширения закрыто');
                 sendResponse({ success: true });
               });
@@ -683,11 +533,237 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'get_logs') {
+    const filter = request.filter || 'all';
+    let logs = CONFIG.requestLog || [];
+    if (filter !== 'all') {
+      logs = logs.filter(log => log.level === filter);
+    }
+    sendResponse({ logs: logs });
+    return true;
+  }
+
   return false;
 });
 
 // ============================================================
-// 8. ИНИЦИАЛИЗАЦИЯ (без бесконечных циклов)
+// 8. ПОИСК БУКМАРКЛЕТА ПО URL
+// ============================================================
+
+async function findBookmarkByUrl(url, requestDetails = {}) {
+  if (isIgnoredUrl(url)) {
+    logger.debug(`⏭️ Игнорируем системный URL: ${url}`);
+    return null;
+  }
+
+  logger.debug(`🔍 Поиск закладки по URL: ${url}`);
+
+  if (CONFIG.cache.has(url)) {
+    const cached = CONFIG.cache.get(url);
+    if (Date.now() - cached.timestamp < CONFIG.cacheTTL) {
+      logger.debug(`✅ Найдено в кеше: ${cached.data.title}`);
+      return cached.data;
+    }
+    CONFIG.cache.delete(url);
+  }
+
+  try {
+    const bookmarks = await chrome.bookmarks.search({ url: url });
+    if (bookmarks && bookmarks.length > 0) {
+      const bookmark = bookmarks[0];
+      const result = processBookmark(bookmark);
+      const path = await getBookmarkPath(bookmark.parentId);
+      result.path = path;
+
+      CONFIG.cache.set(url, { data: result, timestamp: Date.now() });
+
+      if (requestDetails.source === 'bookmarklet' || requestDetails.source === 'content_script') {
+        logger.logBookmarkRequest(url, result, requestDetails);
+      }
+      return result;
+    }
+
+    let searchTitle = requestDetails.bookmarkletName || requestDetails.title;
+
+    if (searchTitle) {
+      logger.debug(`🔍 Поиск по названию: \"${searchTitle}\"`);
+
+      const allBookmarks = await chrome.bookmarks.search({ query: 'javascript:' });
+
+      for (const bm of allBookmarks) {
+        if (bm.url && bm.url.startsWith('javascript:')) {
+          const titleMatch = bm.title && bm.title.toLowerCase().includes(searchTitle.toLowerCase());
+          const searchInTitle = searchTitle
+            .toLowerCase()
+            .includes(bm.title ? bm.title.toLowerCase() : '');
+
+          if (titleMatch || searchInTitle) {
+            logger.info(`✅ Найден букмарклет по названию: \"${bm.title}\"`);
+            const result = processBookmark(bm);
+            const path = await getBookmarkPath(bm.parentId);
+            result.path = path;
+
+            CONFIG.cache.set(url, { data: result, timestamp: Date.now() });
+
+            if (
+              requestDetails.source === 'bookmarklet' ||
+              requestDetails.source === 'content_script'
+            ) {
+              logger.logBookmarkRequest(url, result, requestDetails);
+            }
+            return result;
+          }
+        }
+      }
+    }
+
+    if (requestDetails.tabTitle) {
+      logger.debug(`🔍 Поиск по заголовку страницы: \"${requestDetails.tabTitle}\"`);
+
+      const allBookmarks = await chrome.bookmarks.search({ query: 'javascript:' });
+      for (const bm of allBookmarks) {
+        if (bm.url && bm.url.startsWith('javascript:')) {
+          const titleMatch =
+            bm.title && requestDetails.tabTitle.toLowerCase().includes(bm.title.toLowerCase());
+          if (titleMatch) {
+            logger.info(`✅ Найден букмарклет по заголовку страницы: \"${bm.title}\"`);
+            const result = processBookmark(bm);
+            const path = await getBookmarkPath(bm.parentId);
+            result.path = path;
+
+            CONFIG.cache.set(url, { data: result, timestamp: Date.now() });
+
+            if (
+              requestDetails.source === 'bookmarklet' ||
+              requestDetails.source === 'content_script'
+            ) {
+              logger.logBookmarkRequest(url, result, requestDetails);
+            }
+            return result;
+          }
+        }
+      }
+    }
+
+    const baseUrl = url.split('?')[0].split('#')[0];
+    if (baseUrl !== url) {
+      logger.debug(`🔍 Пробуем базовый URL: ${baseUrl}`);
+      const bookmarks = await chrome.bookmarks.search({ url: baseUrl });
+      if (bookmarks && bookmarks.length > 0) {
+        const bookmark = bookmarks[0];
+        const result = processBookmark(bookmark);
+        const path = await getBookmarkPath(bookmark.parentId);
+        result.path = path;
+
+        CONFIG.cache.set(url, { data: result, timestamp: Date.now() });
+
+        if (requestDetails.source === 'bookmarklet' || requestDetails.source === 'content_script') {
+          logger.logBookmarkRequest(url, result, requestDetails);
+        }
+        return result;
+      }
+    }
+
+    logger.debug(`ℹ️ Закладка не найдена для: ${url}`);
+    return null;
+  } catch (error) {
+    logger.error(`❌ Ошибка поиска: ${error.message}`);
+    return null;
+  }
+}
+
+// ============================================================
+// 9. ПОЛУЧЕНИЕ ВСЕХ ЗАКЛАДОК
+// ============================================================
+
+async function loadAllBookmarks() {
+  logger.info('📑 Загрузка всех закладок...');
+
+  try {
+    const tree = await chrome.bookmarks.getTree();
+    const allBookmarks = [];
+    const bookmarklets = [];
+    const folders = [];
+
+    function traverseBookmarks(node, path = '') {
+      if (node.url) {
+        const isBookmarklet = node.url.startsWith('javascript:');
+        const bookmark = {
+          id: node.id,
+          title: node.title || 'Без названия',
+          url: node.url,
+          path: path || 'Корень',
+          isBookmarklet: isBookmarklet,
+          type: isBookmarklet ? 'bookmarklet' : 'url',
+          parentId: node.parentId,
+        };
+        allBookmarks.push(bookmark);
+        if (isBookmarklet) {
+          bookmarklets.push(bookmark);
+        }
+      }
+
+      if (node.children) {
+        const currentPath = path ? `${path} > ${node.title || 'Корень'}` : node.title || 'Корень';
+        if (node.title && !node.url) {
+          folders.push({
+            id: node.id,
+            title: node.title,
+            path: path || 'Корень',
+            childrenCount: node.children.length,
+          });
+        }
+        for (const child of node.children) {
+          traverseBookmarks(child, currentPath);
+        }
+      }
+    }
+
+    for (const root of tree) {
+      traverseBookmarks(root, '');
+    }
+
+    CONFIG.allBookmarks = allBookmarks;
+    CONFIG.bookmarklets = bookmarklets;
+    CONFIG.folders = folders;
+
+    logger.info('═══════════════════════════════════════════════════════════');
+    logger.info(`📊 СТАТИСТИКА ЗАКЛАДОК`);
+    logger.info(`   📑 Всего закладок: ${allBookmarks.length}`);
+    logger.info(`   📌 Букмарклетов: ${bookmarklets.length}`);
+    logger.info(`   📁 Папок: ${folders.length}`);
+    logger.info('═══════════════════════════════════════════════════════════');
+
+    if (bookmarklets.length > 0) {
+      logger.info('📋 СПИСОК БУКМАРКЛЕТОВ:');
+      for (const bm of bookmarklets) {
+        const urlPreview = bm.url.substring(0, 50) + (bm.url.length > 50 ? '...' : '');
+        logger.info(`   📌 ${bm.title}`);
+        logger.info(`      📂 ${bm.path}`);
+        logger.info(`      🔗 ${urlPreview}`);
+        logger.info(`      🆔 ${bm.id}`);
+        logger.info('   ──────────────────────────────');
+      }
+    } else {
+      logger.warn('⚠️ Букмарклеты не найдены');
+    }
+
+    CONFIG.bookmarksCache = {
+      all: allBookmarks,
+      bookmarklets: bookmarklets,
+      folders: folders,
+      timestamp: Date.now(),
+    };
+
+    return { allBookmarks, bookmarklets, folders };
+  } catch (error) {
+    logger.error(`❌ Ошибка загрузки: ${error.message}`);
+    return null;
+  }
+}
+
+// ============================================================
+// 10. ИНИЦИАЛИЗАЦИЯ
 // ============================================================
 
 logger.info('═══════════════════════════════════════════════════════════');
@@ -696,15 +772,13 @@ logger.info(`📌 Версия: 1.0.0`);
 logger.info(`📌 Уровень логирования: INFO`);
 logger.info(`📌 Размер окна: ${CONFIG.windowWidth}x${CONFIG.windowHeight}`);
 logger.info(`📌 Позиция: правый верхний угол`);
+logger.info('📌 Повторный клик фокусирует существующее окно');
 logger.info('═══════════════════════════════════════════════════════════');
 
 // Загружаем закладки один раз при старте
 setTimeout(() => {
   loadAllBookmarks();
 }, 1000);
-
-// Обновление закладок только по запросу, без бесконечных циклов
-// setInterval УДАЛЁН - больше нет автоматического обновления
 
 logger.info('📌 Отслеживание вкладок ОТКЛЮЧЕНО');
 logger.info('📌 Поиск букмарклетов по URL И названию');

@@ -1,19 +1,19 @@
 // content.js - Мост между страницей и расширением
-// С ПОДРОБНЫМ ВЫВОДОМ ВСЕХ ДАННЫХ ЗАПРОСА
+// УПРОЩЕНО: Без спама предупреждениями, проверка контекста один раз
 
 // ============================================================
 // 1. КОНФИГУРАЦИЯ
 // ============================================================
 
 const CONFIG = {
-  debug: true, // Включаем debug для просмотра всех данных
+  debug: false,
   sources: ['my-bookmarklet', 'bookmarklet-debug', 'my-bookmarklet-extension'],
   types: ['REQUEST_BOOKMARK_DATA', 'REQUEST_BOOKMARK_DATA_DEBUG', 'GET_BOOKMARK_DATA'],
   timeout: 3000,
 };
 
 // ============================================================
-// 2. ЛОГГЕР (с подробным выводом)
+// 2. ЛОГГЕР (минимальный, без спама)
 // ============================================================
 
 const logger = {
@@ -21,79 +21,24 @@ const logger = {
     console.error(`[Bookmarklet] ❌ ${msg}`, data || '');
   },
   warn: function (msg, data) {
-    console.warn(`[Bookmarklet] ⚠️ ${msg}`, data || '');
+    if (CONFIG.debug) {
+      console.warn(`[Bookmarklet] ⚠️ ${msg}`, data || '');
+    }
   },
   info: function (msg, data) {
-    console.log(`[Bookmarklet] ℹ️ ${msg}`, data || '');
+    if (CONFIG.debug) {
+      console.log(`[Bookmarklet] ℹ️ ${msg}`, data || '');
+    }
   },
   debug: function (msg, data) {
-    console.log(`[Bookmarklet] 🔍 ${msg}`, data || '');
-  },
-  // Специальный метод для вывода данных запроса
-  logRequestData: function (eventData) {
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('📨 ДАННЫЕ ЗАПРОСА ОТ БУКМАРКЛЕТА');
-    console.log('═══════════════════════════════════════════════════════════');
-
-    // Выводим все поля с деталями
-    const fields = [
-      { key: 'source', label: '📡 Источник' },
-      { key: 'type', label: '📋 Тип запроса' },
-      { key: 'currentUrl', label: '📍 Текущий URL' },
-      { key: 'bookmarkletName', label: '📛 Имя букмарклета' },
-      { key: 'title', label: '📄 Заголовок страницы' },
-      { key: 'tabId', label: '🆔 ID вкладки' },
-      { key: 'requestId', label: '🔢 ID запроса' },
-      { key: 'timestamp', label: '⏱️ Время' },
-    ];
-
-    for (const field of fields) {
-      const value = eventData[field.key];
-      if (value !== undefined && value !== null) {
-        console.log(`   ${field.label}: ${value}`);
-      }
+    if (CONFIG.debug) {
+      console.log(`[Bookmarklet] 🔍 ${msg}`, data || '');
     }
-
-    // Выводим все остальные поля
-    const otherFields = Object.keys(eventData).filter(
-      k => !fields.some(f => f.key === k) && k !== 'source' && k !== 'type'
-    );
-
-    if (otherFields.length > 0) {
-      console.log('   📦 Дополнительные поля:');
-      for (const key of otherFields) {
-        console.log(`      ${key}: ${JSON.stringify(eventData[key])}`);
-      }
-    }
-
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('🔍 АНАЛИЗ ЗАПРОСА:');
-
-    // Анализируем, что ищем
-    const searchTerms = [];
-    if (eventData.bookmarkletName) {
-      searchTerms.push(`📛 по имени: "${eventData.bookmarkletName}"`);
-    }
-    if (eventData.title) {
-      searchTerms.push(`📄 по заголовку: "${eventData.title}"`);
-    }
-    if (eventData.currentUrl && !eventData.currentUrl.startsWith('chrome://')) {
-      searchTerms.push(`📍 по URL: "${eventData.currentUrl}"`);
-    }
-
-    if (searchTerms.length > 0) {
-      console.log(`   🔎 Будем искать: ${searchTerms.join(', ')}`);
-    } else {
-      console.log('   ⚠️ Не указаны критерии поиска!');
-      console.log('   💡 Добавьте в запрос поля: bookmarkletName, title или currentUrl');
-    }
-
-    console.log('═══════════════════════════════════════════════════════════');
   },
 };
 
 // ============================================================
-// 3. ПРОВЕРКА КОНТЕКСТА
+// 3. ПРОВЕРКА КОНТЕКСТА (ОДИН РАЗ)
 // ============================================================
 
 let extensionAvailable = false;
@@ -107,6 +52,7 @@ function checkExtensionAvailable() {
   return extensionAvailable;
 }
 
+// Проверяем при загрузке
 checkExtensionAvailable();
 
 // ============================================================
@@ -138,7 +84,7 @@ function setCachedData(url, data) {
 // 5. ОТПРАВКА В BACKGROUND
 // ============================================================
 
-function sendMessageToBackground(url, requestDetails = {}) {
+function sendMessageToBackground(url, tabId) {
   return new Promise((resolve, reject) => {
     if (!extensionAvailable) {
       reject(new Error('Расширение недоступно'));
@@ -150,24 +96,23 @@ function sendMessageToBackground(url, requestDetails = {}) {
     }, CONFIG.timeout);
 
     try {
-      const message = {
-        action: 'find_bookmark_by_url',
-        url: url,
-        timestamp: Date.now(),
-        source: 'content_script',
-        ...requestDetails, // передаём все дополнительные поля
-      };
-
-      logger.debug(`📤 Отправка в background:`, message);
-
-      chrome.runtime.sendMessage(message, response => {
-        clearTimeout(timeout);
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
+      chrome.runtime.sendMessage(
+        {
+          action: 'find_bookmark_by_url',
+          url: url,
+          tabId: tabId,
+          timestamp: Date.now(),
+          source: 'content_script',
+        },
+        response => {
+          clearTimeout(timeout);
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          resolve(response);
         }
-        resolve(response);
-      });
+      );
     } catch (error) {
       clearTimeout(timeout);
       reject(error);
@@ -176,23 +121,17 @@ function sendMessageToBackground(url, requestDetails = {}) {
 }
 
 // ============================================================
-// 6. ОБРАБОТЧИК ЗАПРОСОВ ОТ БУКМАРКЛЕТА (С ПОДРОБНЫМ ВЫВОДОМ)
+// 6. ОБРАБОТЧИК ЗАПРОСОВ ОТ БУКМАРКЛЕТА
 // ============================================================
 
 window.addEventListener('message', async event => {
-  // Проверяем, что это сообщение
   if (!event.data || typeof event.data !== 'object') return;
 
-  // Проверяем, что сообщение от нашего букмарклета
+console.log('message >>>>>>>>>>>>>>>>>> ', event);
   const isFromBookmarklet = event.data.source && CONFIG.sources.includes(event.data.source);
   const isRequestType = event.data.type && CONFIG.types.includes(event.data.type);
 
   if (!isFromBookmarklet || !isRequestType) return;
-
-  // ============================================================
-  // ПОДРОБНЫЙ ВЫВОД ВСЕХ ДАННЫХ ЗАПРОСА
-  // ============================================================
-  logger.logRequestData(event.data);
 
   const url = event.data.currentUrl || window.location.href;
   const requestId =
@@ -201,8 +140,6 @@ window.addEventListener('message', async event => {
   // Проверяем кеш
   const cachedData = getCachedData(url);
   if (cachedData) {
-    logger.info(`📤 Отправка кешированных данных для: ${url}`);
-    logger.debug(`   📦 Кеш: ${cachedData.title} (${cachedData.type})`);
     window.postMessage(
       {
         source: 'my-extension-bridge',
@@ -217,7 +154,6 @@ window.addEventListener('message', async event => {
 
   // Если расширение недоступно — fallback
   if (!extensionAvailable) {
-    logger.warn('⚠️ Расширение недоступно, отправляем fallback');
     window.postMessage(
       {
         source: 'my-extension-bridge',
@@ -237,22 +173,10 @@ window.addEventListener('message', async event => {
     return;
   }
 
-  // Отправляем запрос в background с дополнительными данными
+  // Отправляем запрос
   try {
-    const requestDetails = {
-      bookmarkletName: event.data.bookmarkletName || event.data.name,
-      title: event.data.title || document.title,
-      tabTitle: document.title,
-    };
-
-    logger.info(`📤 Отправка запроса в background...`);
-    logger.debug(`   📛 Имя: ${requestDetails.bookmarkletName || 'не указано'}`);
-    logger.debug(`   📄 Заголовок: ${requestDetails.title || 'не указан'}`);
-
-    const response = await sendMessageToBackground(url, requestDetails);
-
+    const response = await sendMessageToBackground(url);
     if (response && response.title) {
-      logger.info(`✅ Получен ответ: "${response.title}" (${response.type || 'unknown'})`);
       setCachedData(url, response);
       window.postMessage(
         {
@@ -264,7 +188,6 @@ window.addEventListener('message', async event => {
         '*'
       );
     } else {
-      logger.warn('⚠️ Пустой ответ от background, отправляем fallback');
       window.postMessage(
         {
           source: 'my-extension-bridge',
@@ -283,7 +206,6 @@ window.addEventListener('message', async event => {
       );
     }
   } catch (error) {
-    logger.error(`❌ Ошибка: ${error.message}`);
     window.postMessage(
       {
         source: 'my-extension-bridge',
@@ -402,11 +324,13 @@ if (typeof window !== 'undefined') {
 }
 
 // ============================================================
-// 10. ИНИЦИАЛИЗАЦИЯ
+// 10. ИНИЦИАЛИЗАЦИЯ (без спама)
 // ============================================================
 
 console.log('📦 Bookmarklet Bridge Content Script v3.0');
-console.log(`📌 Расширение: ${extensionAvailable ? '✅ доступно' : '❌ недоступно'}`);
+console.log(
+  `📌 Расширение: ${extensionAvailable ? '✅ доступно' : '❌ недоступно (работает в fallback режиме)'}`
+);
 console.log(
   '📋 Команды: __bookmarkBridge.requestBookmarkData(), __bookmarkBridge.checkExtension()'
 );

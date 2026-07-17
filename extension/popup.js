@@ -1,5 +1,5 @@
 // packages/mtproto-mqtt-gateway/metaflow/02-config-generator/web/Bookmarklet/extension/popup.js
-// ИСПРАВЛЕНО: Добавлена функция preloadFavicons
+// ИСПРАВЛЕНО: Очистка логов при открытии, вывод всех входящих/исходящих сообщений
 
 // ============================================================
 // 1. СОСТОЯНИЕ
@@ -32,7 +32,7 @@ const STATE = {
 };
 
 // ============================================================
-// 2. ЛОГГЕР
+// 2. ЛОГГЕР С ВЫВОДОМ ВСЕХ СООБЩЕНИЙ
 // ============================================================
 
 function addLog(level, message, data = null) {
@@ -44,16 +44,55 @@ function addLog(level, message, data = null) {
 
     if (levelIndex > currentIndex) return;
 
+    // Форматируем данные для вывода
+    let dataStr = '';
+    if (data !== null && data !== undefined) {
+      try {
+        if (typeof data === 'object') {
+          dataStr = JSON.stringify(data, null, 2);
+        } else {
+          dataStr = String(data);
+        }
+      } catch (e) {
+        dataStr = '[Object]';
+      }
+    }
+
     const entry = {
       timestamp: new Date().toISOString(),
       level,
       message,
-      data: data ? JSON.stringify(data) : null,
+      data: dataStr || null,
+      rawData: data,
     };
 
     STATE.logs.unshift(entry);
     if (STATE.logs.length > STATE.settings.maxLogs) {
       STATE.logs.pop();
+    }
+
+    // Выводим в консоль с полными данными
+    const consoleMsg = `[${level.toUpperCase()}] ${message}`;
+    if (data !== null && data !== undefined) {
+      if (level === 'error') {
+        console.error(consoleMsg, data);
+      } else if (level === 'warn') {
+        console.warn(consoleMsg, data);
+      } else if (level === 'debug') {
+        console.debug(consoleMsg, data);
+      } else {
+        console.log(consoleMsg, data);
+      }
+    } else {
+      if (level === 'error') {
+        console.error(consoleMsg);
+      } else if (level === 'warn') {
+        console.warn(consoleMsg);
+      } else if (level === 'debug') {
+        console.debug(consoleMsg);
+      } else {
+        console.log(consoleMsg);
+      }
     }
 
     renderLogs();
@@ -64,7 +103,7 @@ function addLog(level, message, data = null) {
         action: 'log_update',
         level,
         message,
-        data,
+        data: dataStr,
       })
       .catch(() => {});
   } catch (e) {
@@ -73,7 +112,31 @@ function addLog(level, message, data = null) {
 }
 
 // ============================================================
-// 3. РАБОТА С ХРАНИЛИЩЕМ
+// 3. ЛОГИРОВАНИЕ ВХОДЯЩИХ/ИСХОДЯЩИХ СООБЩЕНИЙ
+// ============================================================
+
+function logIncomingMessage(source, type, data) {
+  addLog('debug', `📥 ВХОДЯЩЕЕ: ${source}:${type}`, data);
+}
+
+function logOutgoingMessage(target, type, data) {
+  addLog('debug', `📤 ИСХОДЯЩЕЕ: ${target}:${type}`, data);
+}
+
+function logBookmarkRequest(url, bookmarkName, details) {
+  addLog('info', `📌 ЗАПРОС ЗАКЛАДКИ: "${bookmarkName}"`, {
+    url: url,
+    bookmarkName: bookmarkName,
+    details: details,
+  });
+}
+
+function logBookmarkResponse(bookmarkData) {
+  addLog('info', `📤 ОТВЕТ ЗАКЛАДКИ: "${bookmarkData?.title || 'Неизвестная'}"`, bookmarkData);
+}
+
+// ============================================================
+// 4. РАБОТА С ХРАНИЛИЩЕМ
 // ============================================================
 
 const STORAGE_KEY = 'bookmarklet-bridge-state';
@@ -106,7 +169,7 @@ function loadState() {
 }
 
 // ============================================================
-// 4. РАБОТА С FAVICON
+// 5. РАБОТА С FAVICON
 // ============================================================
 
 function getFaviconUrl(url) {
@@ -143,7 +206,7 @@ function getFallbackColor(url) {
 }
 
 // ============================================================
-// 5. ПРЕДЗАГРУЗКА FAVICON
+// 6. ПРЕДЗАГРУЗКА FAVICON
 // ============================================================
 
 async function preloadFavicons(bookmarks) {
@@ -153,7 +216,6 @@ async function preloadFavicons(bookmarks) {
       .map(b => getFaviconUrl(b.url))
       .filter(u => u);
 
-    // Загружаем только первые 10 для экономии ресурсов
     for (const url of urls.slice(0, 10)) {
       try {
         const img = new Image();
@@ -174,16 +236,27 @@ async function preloadFavicons(bookmarks) {
 }
 
 // ============================================================
-// 6. РАБОТА С ЗАКЛАДКАМИ
+// 7. РАБОТА С ЗАКЛАДКАМИ
 // ============================================================
 
 async function loadAllBookmarksFromExtension() {
+  if (STATE.allBookmarks && STATE.allBookmarks.length > 0) {
+    addLog('debug', '📦 Используем кеш закладок');
+    return STATE.allBookmarks;
+  }
+
   try {
     addLog('info', '📑 Загрузка всех закладок...');
+
+    // Логируем исходящий запрос
+    logOutgoingMessage('background', 'get_all_bookmarks', { action: 'get_all_bookmarks' });
 
     const response = await chrome.runtime.sendMessage({
       action: 'get_all_bookmarks',
     });
+
+    // Логируем входящий ответ
+    logIncomingMessage('background', 'get_all_bookmarks_response', response);
 
     if (response && response.success) {
       const data = response.data;
@@ -192,8 +265,9 @@ async function loadAllBookmarksFromExtension() {
       STATE.folders = data.folders || [];
       STATE.bookmarks = data.all || [];
 
-      // Предзагружаем favicon
-      await preloadFavicons(STATE.bookmarks);
+      if (STATE.allBookmarks.length > 0) {
+        await preloadFavicons(STATE.bookmarks);
+      }
 
       updateBookmarksStats();
       renderBookmarks();
@@ -203,7 +277,7 @@ async function loadAllBookmarksFromExtension() {
     }
     return null;
   } catch (error) {
-    addLog('error', `❌ Ошибка: ${error.message}`);
+    addLog('error', `❌ Ошибка: ${error.message}`, error);
     return null;
   }
 }
@@ -313,7 +387,7 @@ function escapeHtml(text) {
 }
 
 // ============================================================
-// 7. РАБОТА С ЛОГАМИ
+// 8. РАБОТА С ЛОГАМИ
 // ============================================================
 
 function renderLogs() {
@@ -339,11 +413,20 @@ function renderLogs() {
       const time = new Date(log.timestamp).toLocaleTimeString();
       const levelClass = log.level;
 
+      let messageHtml = escapeHtml(log.message);
+      if (log.data) {
+        const dataPreview =
+          typeof log.data === 'string' && log.data.length > 100
+            ? log.data.substring(0, 100) + '...'
+            : log.data;
+        messageHtml += `\n📦 ${escapeHtml(JSON.stringify(dataPreview, null, 2))}`;
+      }
+
       html += `
                 <div class="log-entry">
                     <span class="log-time">${time}</span>
                     <span class="log-level ${levelClass}">${log.level.toUpperCase()}</span>
-                    <span class="log-message">${escapeHtml(log.message)}</span>
+                    <span class="log-message">${messageHtml}</span>
                 </div>
             `;
     }
@@ -355,7 +438,114 @@ function renderLogs() {
 }
 
 // ============================================================
-// 8. ОБНОВЛЕНИЕ СТАТИСТИКИ
+// 9. ЭКСПОРТ ЛОГОВ
+// ============================================================
+
+function exportLogs() {
+  try {
+    const filter = document.getElementById('log-filter');
+    const filterValue = filter ? filter.value : 'all';
+
+    let logsToExport = STATE.logs;
+    if (filterValue !== 'all') {
+      logsToExport = logsToExport.filter(log => log.level === filterValue);
+    }
+
+    if (logsToExport.length === 0) {
+      addLog('warn', '⚠️ Нет логов для экспорта');
+      showToast('⚠️ Нет логов для экспорта', 'warn');
+      return;
+    }
+
+    const data = {
+      timestamp: new Date().toISOString(),
+      total: logsToExport.length,
+      filter: filterValue,
+      logs: logsToExport,
+      extension: {
+        name: 'Bookmarklet Bridge',
+        version: '1.0.0',
+      },
+    };
+
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `logs-${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    addLog('info', `📤 Экспортировано ${logsToExport.length} записей логов`);
+    showToast(`✅ Экспортировано ${logsToExport.length} записей`, 'success');
+  } catch (error) {
+    addLog('error', `❌ Ошибка экспорта логов: ${error.message}`);
+    showToast('❌ Ошибка экспорта логов', 'error');
+  }
+}
+
+// ============================================================
+// 10. TOAST УВЕДОМЛЕНИЯ
+// ============================================================
+
+let toastTimer = null;
+
+function showToast(message, type = 'info') {
+  try {
+    let toast = document.getElementById('toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'toast';
+      toast.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0, 0, 0, 0.9);
+                backdrop-filter: blur(8px);
+                padding: 10px 24px;
+                border-radius: 8px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #fff;
+                font-size: 13px;
+                z-index: 99999;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+                pointer-events: none;
+                max-width: 90vw;
+                text-align: center;
+                font-family: 'Segoe UI', system-ui, sans-serif;
+            `;
+      document.body.appendChild(toast);
+    }
+
+    const colors = {
+      success: '#00b894',
+      error: '#ff6b6b',
+      warn: '#fdcb6e',
+      info: '#667eea',
+    };
+
+    toast.style.borderColor = colors[type] || colors.info;
+    toast.textContent = message;
+    toast.style.opacity = '1';
+
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toast.style.opacity = '0';
+      toastTimer = null;
+    }, 3000);
+  } catch (e) {
+    // Игнорируем ошибки
+  }
+}
+
+// ============================================================
+// 11. ОБНОВЛЕНИЕ СТАТИСТИКИ
 // ============================================================
 
 function updateStats() {
@@ -375,7 +565,7 @@ function updateStats() {
 }
 
 // ============================================================
-// 9. ОБНОВЛЕНИЕ СТАТУСА
+// 12. ОБНОВЛЕНИЕ СТАТУСА
 // ============================================================
 
 function updateConnectionStatus() {
@@ -383,6 +573,9 @@ function updateConnectionStatus() {
     chrome.runtime
       .sendMessage({ action: 'ping' })
       .then(response => {
+        // Логируем входящий ответ
+        logIncomingMessage('background', 'ping_response', response);
+
         const statusEl = document.getElementById('connection-status');
         const footerStatus = document.getElementById('footer-status');
         const badge = document.querySelector('.status-badge .dot');
@@ -412,7 +605,9 @@ function updateConnectionStatus() {
           if (statusText) statusText.textContent = 'Офлайн';
         }
       })
-      .catch(() => {
+      .catch(error => {
+        logIncomingMessage('background', 'ping_error', error);
+
         const statusEl = document.getElementById('connection-status');
         const footerStatus = document.getElementById('footer-status');
         const badge = document.querySelector('.status-badge .dot');
@@ -447,7 +642,7 @@ function updateTime() {
 }
 
 // ============================================================
-// 10. ОБРАБОТЧИКИ СОБЫТИЙ
+// 13. ОБРАБОТЧИКИ СОБЫТИЙ
 // ============================================================
 
 let timers = [];
@@ -487,7 +682,8 @@ function setupEventListeners() {
       STATE.settings.maxLogs = maxLogs ? parseInt(maxLogs.value) || 100 : 100;
 
       saveState();
-      addLog('info', '💾 Настройки сохранены');
+      addLog('info', '💾 Настройки сохранены', STATE.settings);
+      showToast('✅ Настройки сохранены', 'success');
     });
   }
 
@@ -528,7 +724,8 @@ function setupEventListeners() {
       saveState();
       updateStats();
       renderLogs();
-      addLog('info', '↺ Настройки сброшены');
+      addLog('info', '↺ Настройки сброшены', STATE.settings);
+      showToast('↺ Настройки сброшены', 'info');
     });
   }
 
@@ -538,15 +735,21 @@ function setupEventListeners() {
     clearCacheBtn.addEventListener('click', () => {
       if (!confirm('Очистить кеш закладок?')) return;
 
+      logOutgoingMessage('background', 'clear_cache', { action: 'clear_cache' });
+
       chrome.runtime
         .sendMessage({ action: 'clear_cache' })
         .then(() => {
+          logIncomingMessage('background', 'clear_cache_response', { success: true });
           STATE.stats.cacheSize = 0;
           updateStats();
           addLog('info', '🗑️ Кеш очищен');
+          showToast('🗑️ Кеш очищен', 'success');
         })
         .catch(error => {
-          addLog('error', `❌ Ошибка очистки кеша: ${error.message}`);
+          logIncomingMessage('background', 'clear_cache_error', error);
+          addLog('error', `❌ Ошибка очистки кеша: ${error.message}`, error);
+          showToast('❌ Ошибка очистки кеша', 'error');
         });
     });
   }
@@ -562,6 +765,35 @@ function setupEventListeners() {
   if (refreshBtn) {
     refreshBtn.addEventListener('click', () => {
       loadAllBookmarksFromExtension();
+      showToast('🔄 Закладки обновлены', 'success');
+    });
+  }
+
+  // Закладки: Экспорт
+  const exportBookmarksBtn = document.getElementById('btn-export-bookmarks');
+  if (exportBookmarksBtn) {
+    exportBookmarksBtn.addEventListener('click', () => {
+      const data = {
+        timestamp: new Date().toISOString(),
+        total: STATE.bookmarks.length,
+        bookmarklets: STATE.bookmarks.filter(b => b.type === 'bookmarklet').length,
+        bookmarks: STATE.bookmarks,
+      };
+
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bookmarks-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      addLog('info', `📤 Экспортировано ${STATE.bookmarks.length} закладок`);
+      showToast(`📤 Экспортировано ${STATE.bookmarks.length} закладок`, 'success');
     });
   }
 
@@ -573,7 +805,14 @@ function setupEventListeners() {
       renderLogs();
       saveState();
       addLog('info', '🗑️ Логи очищены');
+      showToast('🗑️ Логи очищены', 'info');
     });
+  }
+
+  // Логи: Экспорт
+  const exportLogsBtn = document.getElementById('btn-export-logs');
+  if (exportLogsBtn) {
+    exportLogsBtn.addEventListener('click', exportLogs);
   }
 
   // Логи: Фильтр
@@ -587,6 +826,7 @@ function setupEventListeners() {
   if (linkManager) {
     linkManager.addEventListener('click', e => {
       e.preventDefault();
+      logOutgoingMessage('browser', 'open_tab', { url: 'manager.html' });
       chrome.tabs.create({ url: chrome.runtime.getURL('../Bookmarklet/manager.html') });
     });
   }
@@ -595,6 +835,7 @@ function setupEventListeners() {
   if (linkInstall) {
     linkInstall.addEventListener('click', e => {
       e.preventDefault();
+      logOutgoingMessage('browser', 'open_tab', { url: 'install.html' });
       chrome.tabs.create({ url: chrome.runtime.getURL('../install.html') });
     });
   }
@@ -603,6 +844,7 @@ function setupEventListeners() {
   if (linkDebug) {
     linkDebug.addEventListener('click', e => {
       e.preventDefault();
+      logOutgoingMessage('browser', 'open_tab', { url: 'about:debugging' });
       chrome.tabs.create({ url: 'about:debugging' });
     });
   }
@@ -612,6 +854,7 @@ function setupEventListeners() {
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
       clearTimers();
+      logOutgoingMessage('background', 'close_extension_window', {});
       chrome.runtime.sendMessage({ action: 'close_extension_window' }, () => {
         try {
           window.close();
@@ -623,10 +866,16 @@ function setupEventListeners() {
       });
     });
   }
+
+  // Кнопка PiP
+  const pipBtn = document.getElementById('btn-open-pip');
+  if (pipBtn) {
+    pipBtn.addEventListener('click', openPopupInPip);
+  }
 }
 
 // ============================================================
-// 11. ТАЙМЕРЫ
+// 14. ТАЙМЕРЫ
 // ============================================================
 
 function clearTimers() {
@@ -638,26 +887,250 @@ function clearTimers() {
 }
 
 function setupTimers() {
-  // Только один интервал для обновления времени (каждые 10 секунд)
   const timeTimer = setInterval(updateTime, 10000);
   timers.push(timeTimer);
 
-  // Проверка статуса подключения (каждые 30 секунд, не чаще)
   const statusTimer = setInterval(updateConnectionStatus, 30000);
   timers.push(statusTimer);
 }
 
 // ============================================================
-// 12. ИНИЦИАЛИЗАЦИЯ (один раз)
+// 15. ОТКРЫТИЕ POPUP ПОВЕРХ ВСЕХ ОКОН (PiP)
+// ============================================================
+
+async function openPopupInPip() {
+  if (!('documentPictureInPicture' in window)) {
+    showToast('❌ Ваш браузер не поддерживает Document Picture-in-Picture', 'error');
+    addLog('error', '❌ Document Picture-in-Picture не поддерживается');
+    return;
+  }
+
+  try {
+    addLog('info', '📂 Открытие окна поверх всех окон...');
+    showToast('⏳ Открытие закрепленного окна...', 'info');
+
+    const response = await fetch(chrome.runtime.getURL('popup.html'));
+    let htmlText = await response.text();
+
+    htmlText = htmlText.replace(
+      '</head>',
+      `<style>
+                body {
+                    width: 100vw;
+                    height: 100vh;
+                    overflow: hidden !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                }
+                #popup-container {
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    max-width: 100vw !important;
+                    max-height: 100vh !important;
+                    border-radius: 0 !important;
+                }
+                .window-header, .header {
+                    display: none !important;
+                }
+                .tabs {
+                    margin-top: 0 !important;
+                }
+                #popup-close-btn {
+                    display: none !important;
+                }
+            </style>
+            </head>`
+    );
+
+    const pipWindow = await window.documentPictureInPicture.requestWindow({
+      width: Math.min(540, window.screen.availWidth - 20),
+      height: Math.min(620, window.screen.availHeight - 20),
+    });
+
+    pipWindow.document.open();
+    pipWindow.document.write(htmlText);
+    pipWindow.document.close();
+
+    const scripts = document.querySelectorAll('script[src]');
+    for (const script of scripts) {
+      try {
+        const src = script.src;
+        if (src && !src.includes('pip')) {
+          const newScript = pipWindow.document.createElement('script');
+          newScript.src = src;
+          newScript.type = 'module';
+          pipWindow.document.head.appendChild(newScript);
+        }
+      } catch (e) {
+        // Игнорируем ошибки
+      }
+    }
+
+    pipWindow.addEventListener('load', () => {
+      try {
+        const message = {
+          action: 'pip_init',
+          state: {
+            settings: STATE.settings,
+            stats: STATE.stats,
+            logs: STATE.logs.slice(0, 50),
+            allBookmarks: STATE.allBookmarks || [],
+            bookmarklets: STATE.bookmarklets || [],
+            folders: STATE.folders || [],
+          },
+        };
+        pipWindow.postMessage(message, '*');
+        logOutgoingMessage('pip', 'pip_init', message);
+      } catch (e) {
+        // Игнорируем ошибки
+      }
+    });
+
+    window.close();
+
+    addLog('info', '✅ Окно открыто поверх всех окон');
+    showToast('✅ Окно закреплено поверх всех окон', 'success');
+  } catch (error) {
+    addLog('error', `❌ Ошибка открытия окна: ${error.message}`, error);
+    showToast(`❌ Ошибка: ${error.message}`, 'error');
+    console.error('❌ Ошибка открытия PiP:', error);
+  }
+}
+
+// ============================================================
+// 16. ОБРАБОТКА СООБЩЕНИЙ ОТ BACKGROUND
+// ============================================================
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Логируем входящее сообщение
+  logIncomingMessage('background', message.action || 'unknown', message);
+
+  if (message.action === 'log_update') {
+    addLog(message.level, message.message, message.data);
+    sendResponse({ received: true });
+    return true;
+  }
+
+  if (message.action === 'stats_update') {
+    Object.assign(STATE.stats, message.stats);
+    updateStats();
+    sendResponse({ received: true });
+    return true;
+  }
+
+  if (message.action === 'bookmark_update') {
+    loadAllBookmarksFromExtension();
+    sendResponse({ received: true });
+    return true;
+  }
+
+  if (message.action === 'connection_status') {
+    updateConnectionStatus();
+    sendResponse({ received: true });
+    return true;
+  }
+
+  if (message.action === 'tab_updated') {
+    addLog('info', `🔄 Вкладка обновлена: ${message.tab?.title || '—'}`, message);
+    updateCurrentTabDisplay(message.tab, message.bookmark);
+
+    if (message.bookmark) {
+      addLog('info', `   📌 Закладка: ${message.bookmark.title}`, message.bookmark);
+      logBookmarkRequestDetails(message.bookmark, {
+        url: message.tab?.url,
+        timestamp: Date.now(),
+        source: 'tab_updated',
+      });
+    }
+    sendResponse({ received: true });
+    return true;
+  }
+
+  if (message.action === 'tab_closed') {
+    addLog('info', `🗑️ Вкладка закрыта: ${message.tabId}`, message);
+    currentTabInfo = null;
+    currentBookmarkInfo = null;
+    const statusText = document.getElementById('status-text');
+    if (statusText) statusText.textContent = '—';
+    sendResponse({ received: true });
+    return true;
+  }
+
+  if (message.action === 'bookmarks_loaded') {
+    addLog(
+      'info',
+      `📑 Закладки загружены: ${message.stats?.total || 0} всего, ${message.stats?.bookmarklets || 0} букмарклетов`,
+      message
+    );
+    if (message.bookmarklets) {
+      addLog(
+        'debug',
+        `📌 Букмарклеты: ${message.bookmarklets.map(b => b.title).join(', ')}`,
+        message.bookmarklets
+      );
+    }
+    sendResponse({ received: true });
+    return true;
+  }
+
+  if (message.action === 'bookmark_request') {
+    logBookmarkRequestDetails(message.bookmarkData, message.requestDetails);
+    sendResponse({ received: true });
+    return true;
+  }
+
+  return false;
+});
+
+// ============================================================
+// 17. ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ЗАКЛАДОК
+// ============================================================
+
+function logBookmarkRequestDetails(bookmarkData, requestDetails) {
+  const title = bookmarkData?.title || 'Неизвестная закладка';
+  const type = bookmarkData?.type || 'unknown';
+  const id = bookmarkData?.id || '—';
+  const parent = bookmarkData?.parent?.title || 'корень';
+  const path = bookmarkData?.path?.join(' > ') || '—';
+  const isBookmarklet = bookmarkData?.isBookmarklet || false;
+  const siblingsCount = bookmarkData?.siblings?.length || 0;
+  const features = bookmarkData?.features || [];
+  const version = bookmarkData?.version || '1.0.0';
+  const customConfig = bookmarkData?.customConfig || {};
+
+  const logData = {
+    title,
+    type,
+    id,
+    parent,
+    path,
+    isBookmarklet,
+    siblingsCount,
+    features,
+    version,
+    customConfig,
+    requestDetails,
+  };
+
+  addLog('debug', `📌 ДЕТАЛИ ЗАКЛАДКИ: "${title}"`, logData);
+}
+
+// ============================================================
+// 18. ИНИЦИАЛИЗАЦИЯ С ОЧИСТКОЙ ЛОГОВ
 // ============================================================
 
 async function init() {
-  if (STATE.initialized) return;
+  if (STATE.initialized) {
+    console.log('⚠️ Popup уже инициализирован, пропускаем');
+    return;
+  }
   STATE.initialized = true;
+
+  // ОЧИЩАЕМ ЛОГИ ПРИ ОТКРЫТИИ
+  STATE.logs = [];
 
   loadState();
 
-  // Применяем настройки к UI
   const bridgeEnabled = document.getElementById('bridge-enabled');
   const autoRespond = document.getElementById('auto-respond');
   const timeout = document.getElementById('timeout');
@@ -684,37 +1157,43 @@ async function init() {
     extensionId.textContent = chrome.runtime.id?.substring(0, 8) || 'unknown';
   }
 
-  addLog('info', '📦 Расширение Bookmarklet Bridge запущено');
+  // Логируем запуск
+  addLog('info', '📦 Расширение Bookmarklet Bridge запущено', {
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+  });
   addLog('info', '📌 Версия: 1.0.0');
 
-  // Загружаем закладки
+  // Логируем исходящий запрос на загрузку закладок
+  logOutgoingMessage('background', 'get_all_bookmarks', { action: 'get_all_bookmarks' });
+
   await loadAllBookmarksFromExtension();
 
-  // Настраиваем обработчики событий
   setupEventListeners();
-
-  // Настраиваем таймеры
   setupTimers();
 
-  // Сохраняем состояние
   STATE.isOpen = true;
   saveState();
 }
 
-// Запускаем инициализацию
 document.addEventListener('DOMContentLoaded', () => {
   init();
 });
 
 console.log('📦 Bookmarklet Bridge Popup загружен');
-console.log('📋 Расширение всегда видно, закрывается только по кнопке ✕');
+console.log('📋 Логи очищены при открытии');
+console.log('📋 Все входящие/исходящие сообщения логируются');
 
-// Экспортируем в глобальный объект
 window.__bookmarkBridge = {
   loadAllBookmarksFromExtension,
   getAllBookmarks: () => STATE.allBookmarks || [],
   getBookmarklets: () => STATE.bookmarklets || [],
   getFolders: () => STATE.folders || [],
+  exportLogs: exportLogs,
+  openPopupInPip: openPopupInPip,
+  addLog: addLog,
+  logIncomingMessage: logIncomingMessage,
+  logOutgoingMessage: logOutgoingMessage,
   clearCache: () => {
     STATE.stats.cacheSize = 0;
     updateStats();
