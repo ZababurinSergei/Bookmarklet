@@ -237,7 +237,8 @@ function requestExtensionData(timeout = 3000) {
         source: 'my-bookmarklet',
         type: 'REQUEST_BOOKMARK_DATA',
         currentUrl: window.location.href,
-        tabId: Date.now(),
+        tabId: window.__tabId || null, // 👈 ПЕРЕДАЕМ TAB ID
+        requestId: Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
       },
       '*'
     );

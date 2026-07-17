@@ -3,6 +3,7 @@
 // Подключается через bookmarklet.js
 // ОБНОВЛЕНО: Добавлена поддержка panelType для правильного отображения названия
 // ОБНОВЛЕНО: Добавлено расширенное debug-логирование
+// ОБНОВЛЕНО: z-index поднимается при клике в любую часть панели
 
 // ============================================================
 // 1. DEBUG-ЛОГГЕР ДЛЯ DEBUG-PANEL
@@ -1091,9 +1092,15 @@ function setupHandlers(builder, panel, state, instance) {
     });
   }
 
-  // Клик по панели - выводим на передний план
+  // ✅ КЛИК ПО ВСЕЙ ПАНЕЛИ - выводим на передний план
   panel.addEventListener('mousedown', function (e) {
+    // Не обрабатываем клики по кнопкам управления (чтобы они работали)
     if (e.target.closest('.panel-controls')) return;
+    if (e.target.closest('button')) return;
+    if (e.target.closest('input')) return;
+    if (e.target.closest('select')) return;
+    if (e.target.closest('textarea')) return;
+
     bringToFront(panel);
   });
 

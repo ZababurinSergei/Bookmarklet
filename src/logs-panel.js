@@ -4,6 +4,7 @@
 // ОБНОВЛЕНО: Убраны Illegal return statement
 // ОБНОВЛЕНО: Добавлен panelType: 'logs'
 // ОБНОВЛЕНО: Добавлено расширенное debug-логирование
+// ОБНОВЛЕНО: Добавлен обработчик mousedown на всю панель для поднятия z-index
 
 // ============================================================
 // 1. DEBUG-ЛОГГЕР ДЛЯ LOGS PANEL
@@ -1085,6 +1086,24 @@ function setupHandlers(builder, panel, state, instance) {
     logsLog('✅ Dblclick на шапке настроен', null, 'info');
   }
 
+  // ✅ НОВЫЙ ОБРАБОТЧИК: КЛИК ПО ВСЕЙ ПАНЕЛИ ДЛЯ ПОДНЯТИЯ Z-INDEX
+  // Вешаем событие на всю панель, а не только на шапку
+  panel.addEventListener('mousedown', function (e) {
+    // Исключаем интерактивные элементы, чтобы не мешать их работе
+    if (e.target.closest('.panel-controls')) return;
+    if (e.target.closest('button')) return;
+    if (e.target.closest('input')) return;
+    if (e.target.closest('select')) return;
+    if (e.target.closest('textarea')) return;
+    if (e.target.closest('.ctrl-btn')) return;
+    if (e.target.closest('.close-btn')) return;
+
+    // Выводим панель на передний план
+    bringToFront(panel);
+    logsLog('🎯 Панель выведена на передний план (клик по телу)', null, 'debug');
+  });
+
+  logsLog('✅ Обработчик mousedown на всей панели настроен', null, 'success');
   logsLog('✅ Все обработчики настроены', null, 'success');
 }
 

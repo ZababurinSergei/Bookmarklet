@@ -42,7 +42,7 @@ function addLog(level, message, data = null) {
     const currentLevel = STATE.settings.logLevel;
     const currentIndex = levels.indexOf(currentLevel);
 
-    if (levelIndex > currentIndex) return;
+    if (levelIndex > currentIndex) {return;}
 
     // Форматируем данные для вывода
     let dataStr = '';
@@ -125,9 +125,9 @@ function logOutgoingMessage(target, type, data) {
 
 function logBookmarkRequest(url, bookmarkName, details) {
   addLog('info', `📌 ЗАПРОС ЗАКЛАДКИ: "${bookmarkName}"`, {
-    url: url,
-    bookmarkName: bookmarkName,
-    details: details,
+    url,
+    bookmarkName,
+    details,
   });
 }
 
@@ -159,9 +159,9 @@ function loadState() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const data = JSON.parse(saved);
-      if (data.settings) Object.assign(STATE.settings, data.settings);
-      if (data.stats) Object.assign(STATE.stats, data.stats);
-      if (data.logs) STATE.logs = data.logs;
+      if (data.settings) {Object.assign(STATE.settings, data.settings);}
+      if (data.stats) {Object.assign(STATE.stats, data.stats);}
+      if (data.logs) {STATE.logs = data.logs;}
     }
   } catch (e) {
     // Игнорируем ошибки
@@ -173,7 +173,7 @@ function loadState() {
 // ============================================================
 
 function getFaviconUrl(url) {
-  if (!url) return null;
+  if (!url) {return null;}
   try {
     const urlObj = new URL(url);
     return `${urlObj.origin}/favicon.ico`;
@@ -183,7 +183,7 @@ function getFaviconUrl(url) {
 }
 
 function getFallbackColor(url) {
-  if (!url) return '#667eea';
+  if (!url) {return '#667eea';}
   let hash = 0;
   for (let i = 0; i < url.length; i++) {
     hash = url.charCodeAt(i) + ((hash << 5) - hash);
@@ -293,9 +293,9 @@ function updateBookmarksStats() {
     const bmEl = document.getElementById('bookmarks-bookmarklets');
     const foldersEl = document.getElementById('bookmarks-folders');
 
-    if (totalEl) totalEl.textContent = total;
-    if (bmEl) bmEl.textContent = bookmarklets;
-    if (foldersEl) foldersEl.textContent = folders;
+    if (totalEl) {totalEl.textContent = total;}
+    if (bmEl) {bmEl.textContent = bookmarklets;}
+    if (foldersEl) {foldersEl.textContent = folders;}
   } catch (e) {
     // Игнорируем ошибки обновления статистики
   }
@@ -304,19 +304,19 @@ function updateBookmarksStats() {
 function renderBookmarks() {
   try {
     const container = document.getElementById('bookmarks-list');
-    if (!container) return;
+    if (!container) {return;}
 
     const filter = document.getElementById('bookmark-filter');
     const filterValue = filter ? filter.value.toLowerCase() : '';
 
-    let bookmarks = STATE.bookmarks || STATE.allBookmarks || [];
+    const bookmarks = STATE.bookmarks || STATE.allBookmarks || [];
 
     let filtered = bookmarks;
     if (filterValue) {
       filtered = filtered.filter(
         b =>
           b.title.toLowerCase().includes(filterValue) ||
-          (b.url && b.url.toLowerCase().includes(filterValue))
+          (b.url && b.url.toLowerCase().includes(filterValue)),
       );
     }
 
@@ -380,7 +380,7 @@ function renderBookmarks() {
 }
 
 function escapeHtml(text) {
-  if (!text) return '';
+  if (!text) {return '';}
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
@@ -393,7 +393,7 @@ function escapeHtml(text) {
 function renderLogs() {
   try {
     const container = document.getElementById('logs-container');
-    if (!container) return;
+    if (!container) {return;}
 
     const filter = document.getElementById('log-filter');
     const filterValue = filter ? filter.value : 'all';
@@ -534,7 +534,7 @@ function showToast(message, type = 'info') {
     toast.textContent = message;
     toast.style.opacity = '1';
 
-    if (toastTimer) clearTimeout(toastTimer);
+    if (toastTimer) {clearTimeout(toastTimer);}
     toastTimer = setTimeout(() => {
       toast.style.opacity = '0';
       toastTimer = null;
@@ -555,10 +555,10 @@ function updateStats() {
     const errors = document.getElementById('stat-errors');
     const cache = document.getElementById('stat-cache');
 
-    if (requests) requests.textContent = STATE.stats.requests;
-    if (success) success.textContent = STATE.stats.success;
-    if (errors) errors.textContent = STATE.stats.errors;
-    if (cache) cache.textContent = STATE.stats.cacheSize;
+    if (requests) {requests.textContent = STATE.stats.requests;}
+    if (success) {success.textContent = STATE.stats.success;}
+    if (errors) {errors.textContent = STATE.stats.errors;}
+    if (cache) {cache.textContent = STATE.stats.cacheSize;}
   } catch (e) {
     // Игнорируем ошибки
   }
@@ -590,8 +590,8 @@ function updateConnectionStatus() {
             footerStatus.textContent = '🟢 Активно';
             footerStatus.className = 'online';
           }
-          if (badge) badge.className = 'dot active';
-          if (statusText) statusText.textContent = 'Активно';
+          if (badge) {badge.className = 'dot active';}
+          if (statusText) {statusText.textContent = 'Активно';}
         } else {
           if (statusEl) {
             statusEl.textContent = '🔴 Нет соединения';
@@ -601,8 +601,8 @@ function updateConnectionStatus() {
             footerStatus.textContent = '🔴 Офлайн';
             footerStatus.className = 'offline';
           }
-          if (badge) badge.className = 'dot inactive';
-          if (statusText) statusText.textContent = 'Офлайн';
+          if (badge) {badge.className = 'dot inactive';}
+          if (statusText) {statusText.textContent = 'Офлайн';}
         }
       })
       .catch(error => {
@@ -621,8 +621,8 @@ function updateConnectionStatus() {
           footerStatus.textContent = '🔴 Офлайн';
           footerStatus.className = 'offline';
         }
-        if (badge) badge.className = 'dot inactive';
-        if (statusText) statusText.textContent = 'Офлайн';
+        if (badge) {badge.className = 'dot inactive';}
+        if (statusText) {statusText.textContent = 'Офлайн';}
       });
   } catch (e) {
     // Игнорируем ошибки
@@ -634,8 +634,8 @@ function updateTime() {
     const now = new Date();
     const timeEl = document.getElementById('footer-time');
     const updateEl = document.getElementById('last-update');
-    if (timeEl) timeEl.textContent = now.toLocaleTimeString();
-    if (updateEl) updateEl.textContent = now.toLocaleString();
+    if (timeEl) {timeEl.textContent = now.toLocaleTimeString();}
+    if (updateEl) {updateEl.textContent = now.toLocaleString();}
   } catch (e) {
     // Игнорируем ошибки
   }
@@ -657,7 +657,7 @@ function setupEventListeners() {
       btn.classList.add('active');
       const tab = btn.dataset.tab;
       const panel = document.getElementById(`tab-${tab}`);
-      if (panel) panel.classList.add('active');
+      if (panel) {panel.classList.add('active');}
     });
   });
 
@@ -691,7 +691,7 @@ function setupEventListeners() {
   const resetBtn = document.getElementById('btn-reset-settings');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      if (!confirm('Сбросить все настройки?')) return;
+      if (!confirm('Сбросить все настройки?')) {return;}
 
       STATE.settings = {
         bridgeEnabled: true,
@@ -713,13 +713,13 @@ function setupEventListeners() {
       const logLevel = document.getElementById('log-level');
       const maxLogs = document.getElementById('max-logs');
 
-      if (bridgeEnabled) bridgeEnabled.checked = true;
-      if (autoRespond) autoRespond.checked = true;
-      if (timeout) timeout.value = 5000;
-      if (cacheTTL) cacheTTL.value = 30;
-      if (debugMode) debugMode.checked = false;
-      if (logLevel) logLevel.value = 'info';
-      if (maxLogs) maxLogs.value = 100;
+      if (bridgeEnabled) {bridgeEnabled.checked = true;}
+      if (autoRespond) {autoRespond.checked = true;}
+      if (timeout) {timeout.value = 5000;}
+      if (cacheTTL) {cacheTTL.value = 30;}
+      if (debugMode) {debugMode.checked = false;}
+      if (logLevel) {logLevel.value = 'info';}
+      if (maxLogs) {maxLogs.value = 100;}
 
       saveState();
       updateStats();
@@ -733,7 +733,7 @@ function setupEventListeners() {
   const clearCacheBtn = document.getElementById('btn-clear-cache');
   if (clearCacheBtn) {
     clearCacheBtn.addEventListener('click', () => {
-      if (!confirm('Очистить кеш закладок?')) return;
+      if (!confirm('Очистить кеш закладок?')) {return;}
 
       logOutgoingMessage('background', 'clear_cache', { action: 'clear_cache' });
 
@@ -860,7 +860,7 @@ function setupEventListeners() {
           window.close();
         } catch (e) {
           chrome.windows.getCurrent(win => {
-            if (win) chrome.windows.remove(win.id);
+            if (win) {chrome.windows.remove(win.id);}
           });
         }
       });
@@ -939,7 +939,7 @@ async function openPopupInPip() {
                     display: none !important;
                 }
             </style>
-            </head>`
+            </head>`,
     );
 
     const pipWindow = await window.documentPictureInPicture.requestWindow({
@@ -1051,7 +1051,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     currentTabInfo = null;
     currentBookmarkInfo = null;
     const statusText = document.getElementById('status-text');
-    if (statusText) statusText.textContent = '—';
+    if (statusText) {statusText.textContent = '—';}
     sendResponse({ received: true });
     return true;
   }
@@ -1060,13 +1060,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     addLog(
       'info',
       `📑 Закладки загружены: ${message.stats?.total || 0} всего, ${message.stats?.bookmarklets || 0} букмарклетов`,
-      message
+      message,
     );
     if (message.bookmarklets) {
       addLog(
         'debug',
         `📌 Букмарклеты: ${message.bookmarklets.map(b => b.title).join(', ')}`,
-        message.bookmarklets
+        message.bookmarklets,
       );
     }
     sendResponse({ received: true });
@@ -1139,13 +1139,13 @@ async function init() {
   const logLevel = document.getElementById('log-level');
   const maxLogs = document.getElementById('max-logs');
 
-  if (bridgeEnabled) bridgeEnabled.checked = STATE.settings.bridgeEnabled;
-  if (autoRespond) autoRespond.checked = STATE.settings.autoRespond;
-  if (timeout) timeout.value = STATE.settings.timeout;
-  if (cacheTTL) cacheTTL.value = STATE.settings.cacheTTL;
-  if (debugMode) debugMode.checked = STATE.settings.debugMode;
-  if (logLevel) logLevel.value = STATE.settings.logLevel;
-  if (maxLogs) maxLogs.value = STATE.settings.maxLogs;
+  if (bridgeEnabled) {bridgeEnabled.checked = STATE.settings.bridgeEnabled;}
+  if (autoRespond) {autoRespond.checked = STATE.settings.autoRespond;}
+  if (timeout) {timeout.value = STATE.settings.timeout;}
+  if (cacheTTL) {cacheTTL.value = STATE.settings.cacheTTL;}
+  if (debugMode) {debugMode.checked = STATE.settings.debugMode;}
+  if (logLevel) {logLevel.value = STATE.settings.logLevel;}
+  if (maxLogs) {maxLogs.value = STATE.settings.maxLogs;}
 
   updateStats();
   renderLogs();
@@ -1189,11 +1189,11 @@ window.__bookmarkBridge = {
   getAllBookmarks: () => STATE.allBookmarks || [],
   getBookmarklets: () => STATE.bookmarklets || [],
   getFolders: () => STATE.folders || [],
-  exportLogs: exportLogs,
-  openPopupInPip: openPopupInPip,
-  addLog: addLog,
-  logIncomingMessage: logIncomingMessage,
-  logOutgoingMessage: logOutgoingMessage,
+  exportLogs,
+  openPopupInPip,
+  addLog,
+  logIncomingMessage,
+  logOutgoingMessage,
   clearCache: () => {
     STATE.stats.cacheSize = 0;
     updateStats();

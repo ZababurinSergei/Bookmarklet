@@ -2,6 +2,7 @@
 // ОБНОВЛЕНО: Плавное перемещение с will-change: transform
 // ОБНОВЛЕНО: Оптимизированный requestAnimationFrame
 // ОБНОВЛЕНО: Исправлен z-index через ZIndexManager
+// ОБНОВЛЕНО: Добавлен обработчик mousedown на всю панель для z-index
 
 // ============================================================
 // 1. DEBUG-ЛОГГЕР
@@ -113,7 +114,51 @@ function getGlobalState() {
 }
 
 // ============================================================
-// 4. ОПТИМИЗИРОВАННОЕ ПЕРЕТАСКИВАНИЕ
+// 4. ФУНКЦИЯ ПОДНЯТИЯ ПАНЕЛИ (ОБЩАЯ)
+// ============================================================
+
+function bringToFront(panel) {
+  if (!panel) return;
+
+  // Получаем все окна и панели
+  const allWindows = document.querySelectorAll(
+    '.widget-window, #widget-app, #env-control-panel, #logs-control-panel, ' +
+      '#debug-control-panel-v2, #debug-control-panel'
+  );
+
+  // Находим максимальный z-index
+  let maxZ = 99999;
+  allWindows.forEach(win => {
+    if (win !== panel && win.style.display !== 'none') {
+      const z = parseInt(win.style.zIndex) || 0;
+      if (z > maxZ) maxZ = z;
+    }
+  });
+
+  // Устанавливаем новый z-index
+  const newZ = maxZ + 1;
+  panel.style.zIndex = newZ;
+
+  // Убираем класс active со всех окон
+  allWindows.forEach(win => {
+    win.classList.remove('active-window');
+  });
+
+  // Добавляем класс активному окну
+  panel.classList.add('active-window');
+
+  // Обновляем глобальный максимум
+  if (window.__zIndexMax) {
+    window.__zIndexMax = Math.max(window.__zIndexMax || 0, newZ);
+  } else {
+    window.__zIndexMax = newZ;
+  }
+
+  return newZ;
+}
+
+// ============================================================
+// 5. ОПТИМИЗИРОВАННОЕ ПЕРЕТАСКИВАНИЕ
 // ============================================================
 
 function setupOptimizedDrag(panel, header, state) {
@@ -139,8 +184,7 @@ function setupOptimizedDrag(panel, header, state) {
     isDragging = true;
 
     // Выводим на передний план
-    const zManager = getZIndexManager();
-    zManager.bringToFront(panel);
+    bringToFront(panel);
 
     const rect = panel.getBoundingClientRect();
 
@@ -243,7 +287,7 @@ function setupOptimizedDrag(panel, header, state) {
 }
 
 // ============================================================
-// 5. ОПТИМИЗИРОВАННЫЙ РЕСАЙЗ
+// 6. ОПТИМИЗИРОВАННЫЙ РЕСАЙЗ
 // ============================================================
 
 function setupOptimizedResize(panel, resizeHandle, state) {
@@ -260,8 +304,7 @@ function setupOptimizedResize(panel, resizeHandle, state) {
 
     isResizing = true;
 
-    const zManager = getZIndexManager();
-    zManager.bringToFront(panel);
+    bringToFront(panel);
 
     resizeData = {
       startX: e.clientX,
@@ -332,7 +375,7 @@ function setupOptimizedResize(panel, resizeHandle, state) {
 }
 
 // ============================================================
-// 6. ПОСТРОЕНИЕ ПАНЕЛИ
+// 7. ПОСТРОЕНИЕ ПАНЕЛИ
 // ============================================================
 
 async function buildPanel() {
@@ -413,6 +456,22 @@ async function buildPanel() {
     setupHandlers(builder, panel, state, instance);
     setupStateListeners(builder, panel, state);
 
+    // ============================================================
+    // ✅ КЛИК ПО ВСЕЙ ПАНЕЛИ - поднимаем z-index
+    // ============================================================
+    panel.addEventListener('mousedown', function (e) {
+      // Исключаем элементы управления, чтобы не мешать их работе
+      if (e.target.closest('.panel-controls')) return;
+      if (e.target.closest('button')) return;
+      if (e.target.closest('input')) return;
+      if (e.target.closest('select')) return;
+      if (e.target.closest('textarea')) return;
+      if (e.target.closest('a')) return;
+
+      bringToFront(panel);
+      envLog('🔝 Панель поднята (клик по области)', null, 'debug');
+    });
+
     state.isReady = true;
 
     envLog('✅ Панель создана и показана!', null, 'success');
@@ -424,7 +483,7 @@ async function buildPanel() {
 }
 
 // ============================================================
-// 7. ОБРАБОТЧИКИ КНОПОК
+// 8. ОБРАБОТЧИКИ КНОПОК
 // ============================================================
 
 function setupHandlers(builder, panel, state, instance) {
@@ -476,15 +535,14 @@ function setupHandlers(builder, panel, state, instance) {
     });
   }
 
-  // Клик по панели - выводим на передний план
-  panel.addEventListener('mousedown', () => {
-    const zManager = getZIndexManager();
-    zManager.bringToFront(panel);
-  });
+  // ============================================================
+  // ✅ КЛИК ПО ПАНЕЛИ - выводим на передний план (уже добавлен в buildPanel)
+  // ============================================================
+  // Обработчик добавлен в buildPanel, чтобы срабатывал на всю панель
 }
 
 // ============================================================
-// 8. СЛУШАТЕЛИ СОСТОЯНИЯ
+// 9. СЛУШАТЕЛИ СОСТОЯНИЯ
 // ============================================================
 
 function setupStateListeners(builder, panel, state) {
@@ -559,8 +617,7 @@ function setupStateListeners(builder, panel, state) {
       document.body.style.overflow = '';
       const resize = panel.querySelector('#env-panel-resize');
       if (resize) resize.style.display = '';
-      const zManager = getZIndexManager();
-      zManager.bringToFront(panel);
+      bringToFront(panel);
     }
     const maxBtn = builder.get('env-maximize-btn');
     if (maxBtn) maxBtn.textContent = e.value ? '⧉' : '□';
@@ -574,8 +631,7 @@ function setupStateListeners(builder, panel, state) {
       setTimeout(() => {
         panel.style.transform = 'scale(1)';
         panel.style.opacity = '1';
-        const zManager = getZIndexManager();
-        zManager.bringToFront(panel);
+        bringToFront(panel);
       }, 50);
     } else {
       panel.style.transform = 'scale(0.95)';
@@ -588,7 +644,7 @@ function setupStateListeners(builder, panel, state) {
 }
 
 // ============================================================
-// 9. ЭКСПОРТ
+// 10. ЭКСПОРТ
 // ============================================================
 
 export default async function (instanceArg) {
@@ -604,6 +660,6 @@ export default async function (instanceArg) {
   return await buildPanel();
 }
 
-export { getInstance, getGlobalState };
+export { getInstance, getGlobalState, bringToFront };
 
 envLog('📦 env-panel.js загружен (оптимизированная версия)', null, 'success');
