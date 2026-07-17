@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📦 Bookmarklet Manager</title>
+    <link rel="stylesheet" href="../widget.css">
+    <style>
+        /* Переопределяем для manager */
+        #manager-app {
+            position: fixed;
+            top: 50px;
+            left: 50px;
+            width: 520px;
+            height: 620px;
+            min-width: 360px;
+            min-height: 400px;
+            max-width: 90vw;
+            max-height: 90vh;
+            background: rgba(26, 26, 46, 0.96);
+            backdrop-filter: blur(20px);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            color: #fff;
+            z-index: 99999;
+            user-select: none;
+            transition: box-shadow 0.3s ease, border-color 0.3s ease;
+        }
+        #manager-app.fullscreen {
+            width: 100vw !important;
+            height: 100vh !important;
+            top: 0 !important;
+            left: 0 !important;
+            border-radius: 0 !important;
+            border: none !important;
+            max-width: 100vw !important;
+            max-height: 100vh !important;
+            min-width: 100vw !important;
+            min-height: 100vh !important;
+            box-shadow: none !important;
+        }
+        #manager-app.minimized {
+            height: 44px !important;
+            min-height: 44px !important;
+            max-height: 44px !important;
+        }
+        #manager-app.minimized #manager-body {
+            display: none;
+        }
+        #manager-app.minimized #manager-resize {
+            display: none;
+        }
+        #manager-app .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        #manager-app .status-item {
+            padding: 6px 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+        #manager-app .status-item .label { color: #8899bb; }
+        #manager-app .status-item .value { font-weight: bold; }
+        #manager-app .status-item .value.ok { color: #00b894; }
+        #manager-app .status-item .value.fail { color: #ff6b6b; }
+        #manager-app .status-item .value.warn { color: #fdcb6e; }
+        #manager-app .status-item .value.info { color: #74b9ff; }
+        #manager-app .btn-group { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+        #manager-app .btn {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        #manager-app .btn-primary { background: #667eea; color: #fff; }
+        #manager-app .btn-primary:hover { background: #5a6fd6; transform: translateY(-2px); }
+        #manager-app .btn-success { background: #00b894; color: #fff; }
+        #manager-app .btn-success:hover { background: #00a86b; transform: translateY(-2px); }
+        #manager-app .btn-danger { background: #ff6b6b; color: #fff; }
+        #manager-app .btn-danger:hover { background: #e55555; transform: translateY(-2px); }
+        #manager-app .btn-secondary { background: rgba(255, 255, 255, 0.08); color: #8899bb; }
+        #manager-app .btn-secondary:hover { background: rgba(255, 255, 255, 0.15); }
+        #manager-app .code-block {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            color: #7bed9f;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            cursor: pointer;
+            margin: 6px 0;
+        }
+        #manager-app .code-block:hover { border-color: rgba(102, 126, 234, 0.3); }
+        #manager-app .log-container {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 6px;
+            padding: 8px;
+            max-height: 120px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            margin-top: 6px;
+        }
+        #manager-app .log-container .log-entry {
+            padding: 2px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            display: flex;
+            gap: 8px;
+        }
+        #manager-app .log-container .log-entry .time { color: #636e72; min-width: 60px; flex-shrink: 0; }
+        #manager-app .log-container .log-entry .ok { color: #00b894; }
+        #manager-app .log-container .log-entry .fail { color: #ff6b6b; }
+        #manager-app .log-container .log-entry .warn { color: #fdcb6e; }
+        #manager-app .log-container .log-entry .info { color: #74b9ff; }
+        #manager-app .manager-card {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin: 6px 0;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        #manager-app .manager-card h4 {
+            color: #8899bb;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        #manager-app .instances-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        #manager-app .instance-tag {
+            padding: 2px 10px;
+            border-radius: 10px;
+            background: rgba(102, 126, 234, 0.15);
+            color: #667eea;
+            font-size: 10px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+        #manager-app .instance-tag.active {
+            border-color: #00b894;
+            background: rgba(0, 184, 148, 0.15);
+            color: #00b894;
+        }
+        #manager-app .manager-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 14px 14px 14px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(102, 126, 234, 0.3) transparent;
+        }
+        #manager-app .manager-scroll::-webkit-scrollbar { width: 4px; }
+        #manager-app .manager-scroll::-webkit-scrollbar-thumb { background: rgba(102, 126, 234, 0.3); border-radius: 2px; }
+        @media (max-width: 600px) {
+            #manager-app { width: 95vw !important; height: 80vh !important; top: 10px !important; left: 2.5vw !important; }
+            #manager-app .status-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div id="manager-app">
+    <!-- Шапка -->
+    <div id="manager-header" style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:grab;flex-shrink:0;min-height:44px;background:rgba(26,26,46,0.98);border-radius:12px 12px 0 0;">
+        <span style="font-weight:bold;font-size:14px;display:flex;align-items:center;gap:8px;">
+            📦 Bookmarklet Manager
+            <span style="font-size:9px;padding:1px 8px;border-radius:10px;background:rgba(102,126,234,0.15);color:#667eea;border:1px solid rgba(102,126,234,0.2);">v2.0</span>
+            <span id="manager-status-badge" style="font-size:8px;padding:1px 6px;border-radius:8px;background:rgba(0,184,148,0.15);color:#00b894;border:1px solid rgba(0,184,148,0.2);">● активен</span>
+        </span>
+        <div style="display:flex;align-items:center;gap:2px;">
+            <button id="manager-minimize" style="background:none;border:none;color:#8899bb;cursor:pointer;font-size:16px;padding:0 4px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all 0.2s;" title="Свернуть">─</button>
+            <button id="manager-maximize" style="background:none;border:none;color:#8899bb;cursor:pointer;font-size:14px;padding:0 4px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all 0.2s;" title="Развернуть">□</button>
+            <button id="manager-close" style="background:none;border:none;color:#8899bb;cursor:pointer;font-size:16px;padding:0 4px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all 0.2s;" title="Закрыть">✕</button>
+        </div>
+    </div>
+
+    <!-- Тело -->
+    <div id="manager-body" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+        <div class="manager-scroll" id="manager-scroll">
+            <!-- Статус -->
+            <div class="manager-card">
+                <h4>📊 Статус системы</h4>
+                <div class="status-grid" id="status-grid">
+                    <div class="status-item"><span class="label">Service Worker</span><span class="value" id="sw-status">⏳ Проверка...</span></div>
+                    <div class="status-item"><span class="label">SharedMemory</span><span class="value" id="sm-status">⏳ Проверка...</span></div>
+                    <div class="status-item"><span class="label">Cross-Origin Isolation</span><span class="value" id="coi-status">⏳ Проверка...</span></div>
+                    <div class="status-item"><span class="label">Активных экземпляров</span><span class="value info" id="instances-count">0</span></div>
+                </div>
+            </div>
+
+            <!-- Управление -->
+            <div class="manager-card">
+                <h4>🎮 Управление</h4>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="registerSW()">🔄 Регистрация SW</button>
+                    <button class="btn btn-success" onclick="runBookmarklet()">🚀 Запустить букмарклет</button>
+                    <button class="btn btn-secondary" onclick="checkAll()">🔍 Проверить всё</button>
+                    <button class="btn btn-secondary" onclick="clearCache()">🗑️ Очистить кеш</button>
+                    <button class="btn btn-danger" onclick="resetAll()">🔄 Сбросить всё</button>
+                </div>
+            </div>
+
+            <!-- Букмарклет -->
+            <div class="manager-card">
+                <h4>📋 Букмарклет для добавления в закладки</h4>
+                <div class="code-block" id="bookmarklet-code" onclick="copyBookmarklet()">
+                    javascript: (function() {
+                    const s = document.createElement('script');
+                    s.type = 'module';
+                    s.src = './Bookmarklet/bookmarklet.js';
+                    document.head.appendChild(s);
+                    })();
+                </div>
+                <button class="btn btn-secondary" onclick="copyBookmarklet()" style="margin-top:4px;">📋 Копировать</button>
+            </div>
+
+            <!-- Активные экземпляры -->
+            <div class="manager-card">
+                <h4>🔄 Активные экземпляры</h4>
+                <div class="instances-list" id="instances-list">
+                    <span style="color:#636e72;font-size:11px;">Нет активных экземпляров</span>
+                </div>
+            </div>
+
+            <!-- Логи -->
+            <div class="manager-card">
+                <h4>📜 Логи</h4>
+                <div style="display:flex;gap:4px;margin-bottom:4px;">
+                    <button class="btn btn-secondary" onclick="clearLogs()" style="font-size:10px;padding:2px 10px;">🗑️ Очистить логи</button>
+                </div>
+                <div class="log-container" id="log-container">
+                    <div class="log-entry"><span class="time">[--:--:--]</span><span class="info">📋 Логи будут здесь...</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ресайз -->
+    <div id="manager-resize" style="position:absolute;bottom:0;right:0;width:16px;height:16px;cursor:nwse-resize;z-index:10;background:linear-gradient(135deg,transparent 50%,rgba(102,126,234,0.2) 50%);border-radius:0 0 12px 0;transition:background 0.3s ease;"></div>
+</div>
+
+<script src="./manager.js" type="module"></script>
+</body>
+</html>
