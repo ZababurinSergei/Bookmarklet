@@ -3,8 +3,8 @@
   "name": "Bookmarklet Bridge",
   "version": "1.0.0",
   "description": "Мост между букмарклетами и расширением для получения данных закладок",
-  "permissions": ["bookmarks", "storage", "activeTab", "tabs"],
-  "host_permissions": ["http://localhost/*", "https://*/*", "http://*/*"],
+  "permissions": ["bookmarks", "storage", "activeTab", "tabs", "system.display"],
+  "host_permissions": ["http://localhost/*", "https://*/*", "http://*/*", "<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
@@ -15,18 +15,23 @@
       "run_at": "document_start"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["favicon.ico", "favicon.png", "popup.html", "popup.js", "popup.css"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "action": {
-    "default_popup": "popup.html",
     "default_title": "Bookmarklet Bridge",
     "default_icon": {
-      "16": "icon16.png",
-      "48": "icon48.png",
-      "128": "icon128.png"
+      "16": "favicon.png",
+      "48": "favicon.png",
+      "128": "favicon.png"
     }
   },
   "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
+    "16": "favicon.png",
+    "48": "favicon.png",
+    "128": "favicon.png"
   }
 }

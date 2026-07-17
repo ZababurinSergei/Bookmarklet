@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>📦 Установка букмарклетов Config Generator</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0f0f1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 30px 20px;
+        }
+        .container {
+            max-width: 820px;
+            width: 100%;
+            background: rgba(26, 26, 46, 0.95);
+            border-radius: 20px;
+            padding: 40px 35px;
+            border: 1px solid rgba(255,255,255,0.06);
+            box-shadow: 0 25px 80px rgba(0,0,0,0.7);
+            backdrop-filter: blur(12px);
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 26px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+        .sub {
+            color: #8899bb;
+            font-size: 14px;
+            margin-bottom: 25px;
+            border-left: 3px solid #667eea;
+            padding-left: 14px;
+        }
+        .card {
+            background: rgba(255,255,255,0.03);
+            border-radius: 14px;
+            padding: 16px 20px;
+            margin-bottom: 14px;
+            border: 1px solid rgba(255,255,255,0.05);
+            transition: all 0.25s;
+        }
+        .card:hover {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(102,126,234,0.25);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-header .name {
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .card-header .badge {
+            font-size: 10px;
+            padding: 2px 10px;
+            border-radius: 20px;
+            background: rgba(102,126,234,0.2);
+            color: #8899bb;
+            border: 1px solid rgba(102,126,234,0.15);
+        }
+        .card-desc {
+            color: #8899bb;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+        .code-block {
+            background: #0a0a14;
+            border-radius: 8px;
+            padding: 12px 14px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #7bed9f;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin-top: 10px;
+            border: 1px solid rgba(255,255,255,0.04);
+            max-height: 120px;
+            overflow-y: auto;
+            position: relative;
+        }
+        .code-block .copy-hint {
+            position: absolute;
+            right: 10px;
+            top: 8px;
+            font-size: 10px;
+            color: #636e72;
+            background: rgba(0,0,0,0.5);
+            padding: 2px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .code-block .copy-hint:hover {
+            color: #fff;
+            background: rgba(102,126,234,0.3);
+        }
+        .btn {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.25s;
+            background: rgba(255,255,255,0.06);
+            color: #b0b0c0;
+            font-family: inherit;
+        }
+        .btn:hover {
+            background: rgba(255,255,255,0.12);
+            transform: translateY(-1px);
+        }
+        .btn-primary {
+            background: #667eea;
+            color: #fff;
+        }
+        .btn-primary:hover {
+            background: #5a6fd6;
+            box-shadow: 0 4px 20px rgba(102,126,234,0.3);
+        }
+        .btn-success {
+            background: #00b894;
+            color: #fff;
+        }
+        .btn-success:hover {
+            background: #00a86b;
+        }
+        .btn-danger {
+            background: #ff6b6b;
+            color: #fff;
+        }
+        .btn-danger:hover {
+            background: #e55555;
+        }
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .install-all {
+            margin-top: 18px;
+            padding-top: 18px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(8px);
+            padding: 12px 28px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #fff;
+            font-size: 14px;
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.4s;
+            pointer-events: none;
+            max-width: 90vw;
+            text-align: center;
+        }
+        .toast.show {
+            opacity: 1;
+        }
+        .toast.ok { border-color: #00b894; }
+        .toast.err { border-color: #ff6b6b; }
+
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .status-dot.on { background: #00b894; }
+        .status-dot.off { background: #636e72; }
+
+        @media (max-width: 600px) {
+            .container { padding: 24px 16px; }
+            h1 { font-size: 20px; }
+            .card-header .name { font-size: 14px; }
+            .code-block { font-size: 10px; max-height: 80px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="app">
+    <h1>📦 Установка букмарклетов</h1>
+    <div class="sub">
+        Конфигуратор для <strong>MTProto MQTT Config Generator</strong> · v2.0
+        <span style="margin-left:12px;font-size:12px;color:#636e72;">
+            <span class="status-dot on" id="status-dot"></span>
+            <span id="status-text">готов</span>
+        </span>
+    </div>
+
+    <div id="bookmarklet-list"></div>
+
+    <div class="install-all">
+        <button class="btn btn-primary" onclick="installAll()">📥 Установить все</button>
+        <button class="btn" onclick="copyAllCodes()">📋 Скопировать все коды</button>
+        <button class="btn btn-success" onclick="openManager()">📂 Открыть менеджер</button>
+        <button class="btn btn-danger" onclick="resetAllData()">🗑️ Сбросить всё</button>
+    </div>
+
+    <div style="margin-top:20px;font-size:12px;color:#445;border-top:1px solid rgba(255,255,255,0.04);padding-top:14px;display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;">
+        <span>💡 Перетащите любую кнопку в панель закладок браузера.</span>
+        <span>📌 Путь: <code style="color:#667eea;font-size:11px;">/Bookmarklet/</code></span>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ============================================================
+  //  КОНФИГУРАЦИЯ
+  // ============================================================
+
+  const BASE_URL = window.location.origin + '/Bookmarklet/';
+
+  const BOOKMARKLETS = [
+    {
+      id: 'bookmarklet',
+      name: '🚀 ENV Control',
+      desc: 'Главная панель управления ENV и DEBUG. Запускает букмарклет и переключает видимость панели.',
+      file: 'bookmarklet.js',
+      code: `javascript:(function(){const s=document.createElement('script');s.type='module';s.src='./Bookmarklet/bookmarklet.js';document.head.appendChild(s);})();`
+    },
+    {
+      id: 'env-panel',
+      name: '🔍 ENV Panel',
+      desc: 'Панель управления переменными окружения, пресетами DEBUG и быстрыми действиями.',
+      file: 'env-panel.js',
+      code: `javascript:(function(){const s=document.createElement('script');s.type='module';s.src='./Bookmarklet/env-panel.js';document.head.appendChild(s);})();`
+    },
+    {
+      id: 'logs-panel',
+      name: '📋 Logs Control',
+      desc: 'Панель для просмотра и фильтрации логов. Перехватывает console.log и выводит в удобном виде.',
+      file: 'logs-panel.js',
+      code: `javascript:(function(){const s=document.createElement('script');s.type='module';s.src='./Bookmarklet/logs-panel.js';document.head.appendChild(s);})();`
+    },
+    {
+      id: 'debug-panel',
+      name: '🐛 Debug Control',
+      desc: 'Расширенная панель отладки с пресетами, историей и детальным управлением DEBUG namespace.',
+      file: 'debug-panel.js',
+      code: `javascript:(function(){const s=document.createElement('script');s.type='module';s.src='./Bookmarklet/debug-panel.js';document.head.appendChild(s);})();`
+    },
+    {
+      id: 'manager',
+      name: '📦 Manager',
+      desc: 'Полный менеджер букмарклетов: регистрация SW, проверка SharedMemory, управление экземплярами.',
+      file: 'manager.html',
+      code: `javascript:window.open('./Bookmarklet/manager.html','_blank','width=900,height=800,menubar=no,toolbar=no,location=no,status=no');`
+    },
+    {
+      id: 'toggle-env',
+      name: '🔄 Toggle ENV',
+      desc: 'Быстрое переключение видимости панели ENV Control (если уже запущена).',
+      file: 'bookmarklet.js',
+      code: `javascript:(function(){if(window.R&&window.R.togglePanel){window.R.togglePanel();}else{const s=document.createElement('script');s.type='module';s.src='./Bookmarklet/bookmarklet.js';document.head.appendChild(s);}})();`
+    },
+    {
+      id: 'toggle-logs',
+      name: '🔄 Toggle Logs',
+      desc: 'Быстрое переключение панели Logs Control.',
+      file: 'logs-panel.js',
+      code: `javascript:(function(){if(window.__logsPanel){window.__logsPanel.toggle();}else{const s=document.createElement('script');s.type='module';s.src='./Bookmarklet/logs-panel.js';document.head.appendChild(s);}})();`
+    },
+    {
+      id: 'toggle-debug',
+      name: '🔄 Toggle Debug',
+      desc: 'Быстрое переключение панели Debug Control.',
+      file: 'debug-panel.js',
+      code: `javascript:(function(){if(window.__debugPanelV2){window.__debugPanelV2.toggle();}else{const s=document.createElement('script');s.type='module';s.src='./Bookmarklet/debug-panel.js';document.head.appendChild(s);}})();`
+    },
+    {
+      id: 'register-sw',
+      name: '📡 Register SW',
+      desc: 'Зарегистрировать Service Worker для поддержки SharedMemory и кросс-вкладкового общения.',
+      file: 'register-sw.js',
+      code: `javascript:(function(){if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js',{scope:'./'}).then(()=>console.log('✅ SW зарегистрирован')).catch(err=>console.error('❌ Ошибка:',err));}})();`
+    },
+    {
+      id: 'reset-all',
+      name: '🗑️ Сбросить всё',
+      desc: 'Очистить все данные букмарклетов (localStorage, состояние панелей, экземпляры).',
+      file: null,
+      code: `javascript:(function(){if(confirm('⚠️ Очистить всё состояние?')){var keys=Object.keys(localStorage);var count=0;keys.forEach(function(key){if(key.startsWith('env-panel-')||key.startsWith('shared_')||key.startsWith('bookmarklet-')||key.startsWith('logs-panel-')||key.startsWith('debug-panel-')){localStorage.removeItem(key);count++;}});alert('✅ Удалено '+count+' записей. Перезагрузите страницу.');location.reload();}})();`
+    }
+  ];
+
+  // ============================================================
+  //  РЕНДЕР
+  // ============================================================
+
+  function renderBookmarklets() {
+    const container = document.getElementById('bookmarklet-list');
+    container.innerHTML = '';
+
+    BOOKMARKLETS.forEach((bm, index) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      card.innerHTML = `
+            <div class="card-header">
+                <span class="name">${bm.name}</span>
+                <span class="badge">${bm.file ? bm.file : 'встроенный'}</span>
+            </div>
+            <div class="card-desc">${bm.desc}</div>
+            <div class="code-block" id="code-${index}">
+                <span class="copy-hint" onclick="copyCode(${index})">📋 Копировать</span>
+                ${bm.code}
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="installBookmarklet(${index})">📥 Установить</button>
+                <button class="btn" onclick="copyCode(${index})">📋 Копировать</button>
+                <button class="btn btn-success" onclick="testBookmarklet(${index})">▶️ Тест</button>
+            </div>
+        `;
+      container.appendChild(card);
+    });
+  }
+
+  // ============================================================
+  //  ДЕЙСТВИЯ
+  // ============================================================
+
+  function getBookmarkletCode(index) {
+    return BOOKMARKLETS[index].code;
+  }
+
+  function installBookmarklet(index) {
+    const code = getBookmarkletCode(index);
+    const name = BOOKMARKLETS[index].name;
+
+    navigator.clipboard.writeText(code).then(() => {
+      showToast(`✅ Код "${name}" скопирован в буфер. Создайте закладку и вставьте его в URL.`, 'ok');
+      updateStatus('готов', 'on');
+    }).catch(() => {
+      const el = document.getElementById(`code-${index}`);
+      if (el) {
+        const range = document.createRange();
+        range.selectNode(el);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        showToast(`📋 Код "${name}" выделен. Скопируйте вручную (Ctrl+C).`, 'ok');
+      }
+    });
+  }
+
+  function copyCode(index) {
+    const code = getBookmarkletCode(index);
+    const name = BOOKMARKLETS[index].name;
+
+    navigator.clipboard.writeText(code).then(() => {
+      showToast(`📋 Код "${name}" скопирован в буфер обмена.`, 'ok');
+      updateStatus('копирование', 'on');
+    }).catch(() => {
+      const el = document.getElementById(`code-${index}`);
+      if (el) {
+        const range = document.createRange();
+        range.selectNode(el);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand('copy');
+        showToast(`📋 Код "${name}" скопирован (fallback).`, 'ok');
+      }
+    });
+  }
+
+  function testBookmarklet(index) {
+    const code = getBookmarkletCode(index);
+    const name = BOOKMARKLETS[index].name;
+
+    try {
+      let execCode = code;
+      if (execCode.startsWith('javascript:')) {
+        execCode = execCode.slice(11);
+      }
+      execCode = execCode.trim();
+
+      // eslint-disable-next-line no-eval
+      const result = eval(execCode);
+      showToast(`▶️ Тест "${name}" выполнен. Проверьте консоль.`, 'ok');
+      console.log(`[Тест букмарклета] ${name}`, result);
+      updateStatus('тест OK', 'on');
+    } catch (err) {
+      showToast(`❌ Ошибка теста "${name}": ${err.message}`, 'err');
+      console.error(`[Ошибка теста] ${name}:`, err);
+      updateStatus('ошибка', 'off');
+    }
+  }
+
+  function installAll() {
+    const codes = BOOKMARKLETS.map(b => b.code);
+    const allCode = codes.join('\n\n');
+
+    navigator.clipboard.writeText(allCode).then(() => {
+      showToast(`✅ Коды всех ${BOOKMARKLETS.length} букмарклетов скопированы.`, 'ok');
+      updateStatus('все скопированы', 'on');
+    }).catch(() => {
+      const textarea = document.createElement('textarea');
+      textarea.value = allCode;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+      showToast(`📋 Коды всех букмарклетов скопированы (fallback).`, 'ok');
+    });
+  }
+
+  function copyAllCodes() {
+    const codes = BOOKMARKLETS.map((b, i) => `// ${b.name}\n${b.code}`).join('\n\n');
+    navigator.clipboard.writeText(codes).then(() => {
+      showToast(`📋 Коды всех букмарклетов скопированы с комментариями.`, 'ok');
+    }).catch(() => {
+      const textarea = document.createElement('textarea');
+      textarea.value = codes;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+      showToast(`📋 Коды скопированы (fallback).`, 'ok');
+    });
+  }
+
+  function openManager() {
+    window.open('./Bookmarklet/manager.html', '_blank', 'width=900,height=800,menubar=no,toolbar=no,location=no,status=no');
+    updateStatus('менеджер открыт', 'on');
+  }
+
+  function resetAllData() {
+    if (confirm('⚠️ Очистить всё состояние букмарклетов?')) {
+      const keys = Object.keys(localStorage);
+      let count = 0;
+      keys.forEach(key => {
+        if (key.startsWith('env-panel-') || key.startsWith('shared_') ||
+          key.startsWith('bookmarklet-') || key.startsWith('logs-panel-') ||
+          key.startsWith('debug-panel-') || key.startsWith('widget-')) {
+          localStorage.removeItem(key);
+          count++;
+        }
+      });
+      showToast(`🗑️ Удалено ${count} записей. Страница будет перезагружена.`, 'ok');
+      updateStatus('сброс', 'off');
+      setTimeout(() => location.reload(), 1500);
+    }
+  }
+
+  // ============================================================
+  //  СТАТУС
+  // ============================================================
+
+  function updateStatus(text, state) {
+    const dot = document.getElementById('status-dot');
+    const label = document.getElementById('status-text');
+    if (dot) {
+      dot.className = 'status-dot ' + state;
+    }
+    if (label) {
+      label.textContent = text;
+    }
+  }
+
+  // ============================================================
+  //  TOAST
+  // ============================================================
+
+  let toastTimer = null;
+
+  function showToast(message, type = 'ok') {
+    const el = document.getElementById('toast');
+    if (!el) return;
+
+    el.textContent = message;
+    el.className = 'toast show ' + type;
+
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      el.classList.remove('show');
+      toastTimer = null;
+    }, 4000);
+  }
+
+  // ============================================================
+  //  ПРОВЕРКА НАЛИЧИЯ ФАЙЛОВ
+  // ============================================================
+
+  async function checkFiles() {
+    const files = ['bookmarklet.js', 'env-panel.js', 'logs-panel.js', 'debug-panel.js', 'manager.html'];
+    let allOk = true;
+
+    for (const file of files) {
+      try {
+        const resp = await fetch('./Bookmarklet/' + file, { method: 'HEAD' });
+        if (!resp.ok) {
+          console.warn(`⚠️ Файл не найден: ${file}`);
+          allOk = false;
+        }
+      } catch {
+        console.warn(`⚠️ Не удалось проверить: ${file}`);
+        allOk = false;
+      }
+    }
+
+    if (!allOk) {
+      showToast('⚠️ Некоторые файлы не найдены. Проверьте путь /Bookmarklet/', 'err');
+      updateStatus('файлы отсутствуют', 'off');
+    } else {
+      updateStatus('все файлы есть', 'on');
+    }
+  }
+
+  // ============================================================
+  //  ИНИЦИАЛИЗАЦИЯ
+  // ============================================================
+
+  renderBookmarklets();
+
+  setTimeout(checkFiles, 500);
+
+  console.log('📦 Установщик букмарклетов загружен');
+  console.log(`📋 Доступно букмарклетов: ${BOOKMARKLETS.length}`);
+  console.log('  Используйте кнопки "Установить" для копирования кода.');
+  console.log('  Или перетащите кнопку "Установить" в панель закладок.');
+  console.log('');
+  console.log('📌 Список файлов в /Bookmarklet/:');
+  console.log('  • bookmarklet.js   - основной ENV Control');
+  console.log('  • env-panel.js     - панель переменных окружения');
+  console.log('  • logs-panel.js    - панель логов');
+  console.log('  • debug-panel.js   - расширенная отладка');
+  console.log('  • manager.html     - менеджер');
+  console.log('  • register-sw.js   - Service Worker');
+</script>
+
+</body>
+</html>

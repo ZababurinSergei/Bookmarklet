@@ -1,27 +1,15 @@
-<!-- packages/mtproto-mqtt-gateway/metaflow/02-config-generator/web/Bookmarklet/extension/popup.html -->
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bookmarklet Bridge</title>
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
 <div id="popup-container">
-    <!-- Шапка -->
-    <div class="header">
-        <div class="header-title">
-            <span class="icon">📦</span>
-            <span>Bookmarklet Bridge</span>
-            <span class="version">v1.0</span>
-        </div>
-        <div class="status-badge" id="status-badge">
-            <span class="dot active"></span>
-            <span id="status-text">Активно</span>
-        </div>
-    </div>
-
     <!-- Вкладки -->
     <div class="tabs">
         <button class="tab-btn active" data-tab="settings">⚙️ Настройки</button>
@@ -32,7 +20,7 @@
 
     <!-- Содержимое вкладок -->
     <div class="tab-content">
-        <!-- Вкладка: Настройки (без скролла) -->
+        <!-- Вкладка: Настройки -->
         <div class="tab-panel active" id="tab-settings">
             <div class="settings-scroll">
                 <div class="settings-group">
@@ -130,7 +118,7 @@
             </div>
         </div>
 
-        <!-- Вкладка: Закладки (со скроллом внутри) -->
+        <!-- Вкладка: Закладки -->
         <div class="tab-panel" id="tab-bookmarks">
             <div class="bookmarks-toolbar">
                 <input type="text" id="bookmark-filter" placeholder="🔍 Фильтр закладок...">
@@ -149,7 +137,7 @@
             </div>
         </div>
 
-        <!-- Вкладка: Логи (со скроллом внутри, растянуты) -->
+        <!-- Вкладка: Логи -->
         <div class="tab-panel" id="tab-logs">
             <div class="logs-toolbar">
                 <button class="btn btn-secondary" id="btn-clear-logs">🗑️ Очистить</button>
@@ -168,7 +156,7 @@
             </div>
         </div>
 
-        <!-- Вкладка: Инфо (без скролла) -->
+        <!-- Вкладка: Инфо -->
         <div class="tab-panel" id="tab-info">
             <div class="info-scroll">
                 <div class="info-group">
@@ -246,6 +234,7 @@
                         <a href="#" id="link-manager" class="link-item">📦 Открыть менеджер букмарклетов</a>
                         <a href="#" id="link-install" class="link-item">📥 Страница установки букмарклетов</a>
                         <a href="#" id="link-debug" class="link-item">🐛 Открыть debug панель</a>
+                        <a href="#" id="link-devtools" class="link-item">🔧 Открыть DevTools расширения</a>
                     </div>
                 </div>
             </div>
@@ -255,7 +244,6 @@
     <!-- Подвал -->
     <div class="footer">
         <span id="footer-status">🟢 Активно</span>
-        <span id="footer-version">v1.0.0</span>
         <span id="footer-time"></span>
     </div>
 </div>
