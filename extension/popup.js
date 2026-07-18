@@ -1,5 +1,8 @@
 // packages/mtproto-mqtt-gateway/metaflow/02-config-generator/web/Bookmarklet/extension/popup.js
-// ИСПРАВЛЕНО: Очистка логов при открытии, вывод всех входящих/исходящих сообщений
+// ПОЛНАЯ ВЕРСИЯ: Исправлена кнопка DevTools для открытия Service Worker DevTools
+// ДОБАВЛЕНО: Полная поддержка приватных символов
+// ДОБАВЛЕНО: Расширенное логирование всех операций
+// ИСПРАВЛЕНО: Открытие DevTools для Service Worker с автоматическим инспектированием
 
 // ============================================================
 // 1. СОСТОЯНИЕ
@@ -29,10 +32,34 @@ const STATE = {
   filteredBookmarks: [],
   isOpen: true,
   initialized: false,
+  instanceSymbols: null,
+  instanceId: null,
+  devtoolsTabId: null,
 };
 
 // ============================================================
-// 2. ЛОГГЕР С ВЫВОДОМ ВСЕХ СООБЩЕНИЙ
+// 2. ПОЛУЧЕНИЕ СИМВОЛОВ ИЗ URL
+// ============================================================
+
+function getInstanceSymbolsFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const instanceId = params.get('instanceId');
+    const symbolsJson = params.get('symbols');
+
+    if (instanceId && symbolsJson) {
+      const symbols = JSON.parse(decodeURIComponent(symbolsJson));
+      console.log('🔑 Получены символы из URL:', { instanceId, symbols });
+      return { instanceId, symbols };
+    }
+  } catch (e) {
+    console.warn('⚠️ Ошибка парсинга символов из URL:', e.message);
+  }
+  return null;
+}
+
+// ============================================================
+// 3. ЛОГГЕР С ВЫВОДОМ ВСЕХ СООБЩЕНИЙ
 // ============================================================
 
 function addLog(level, message, data = null) {
@@ -42,9 +69,10 @@ function addLog(level, message, data = null) {
     const currentLevel = STATE.settings.logLevel;
     const currentIndex = levels.indexOf(currentLevel);
 
-    if (levelIndex > currentIndex) {return;}
+    if (levelIndex > currentIndex) {
+      return;
+    }
 
-    // Форматируем данные для вывода
     let dataStr = '';
     if (data !== null && data !== undefined) {
       try {
@@ -71,7 +99,6 @@ function addLog(level, message, data = null) {
       STATE.logs.pop();
     }
 
-    // Выводим в консоль с полными данными
     const consoleMsg = `[${level.toUpperCase()}] ${message}`;
     if (data !== null && data !== undefined) {
       if (level === 'error') {
@@ -112,7 +139,7 @@ function addLog(level, message, data = null) {
 }
 
 // ============================================================
-// 3. ЛОГИРОВАНИЕ ВХОДЯЩИХ/ИСХОДЯЩИХ СООБЩЕНИЙ
+// 4. ЛОГИРОВАНИЕ ВХОДЯЩИХ/ИСХОДЯЩИХ СООБЩЕНИЙ
 // ============================================================
 
 function logIncomingMessage(source, type, data) {
@@ -123,23 +150,12 @@ function logOutgoingMessage(target, type, data) {
   addLog('debug', `📤 ИСХОДЯЩЕЕ: ${target}:${type}`, data);
 }
 
-function logBookmarkRequest(url, bookmarkName, details) {
-  addLog('info', `📌 ЗАПРОС ЗАКЛАДКИ: "${bookmarkName}"`, {
-    url,
-    bookmarkName,
-    details,
-  });
-}
-
-function logBookmarkResponse(bookmarkData) {
-  addLog('info', `📤 ОТВЕТ ЗАКЛАДКИ: "${bookmarkData?.title || 'Неизвестная'}"`, bookmarkData);
-}
-
 // ============================================================
-// 4. РАБОТА С ХРАНИЛИЩЕМ
+// 5. РАБОТА С ХРАНИЛИЩЕМ
 // ============================================================
 
 const STORAGE_KEY = 'bookmarklet-bridge-state';
+const DEVTOOLS_TAB_KEY = 'bookmarklet-devtools-tab';
 
 function saveState() {
   try {
@@ -147,6 +163,7 @@ function saveState() {
       settings: STATE.settings,
       stats: STATE.stats,
       logs: STATE.logs.slice(0, 100),
+      devtoolsTabId: STATE.devtoolsTabId,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (e) {
@@ -159,9 +176,18 @@ function loadState() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const data = JSON.parse(saved);
-      if (data.settings) {Object.assign(STATE.settings, data.settings);}
-      if (data.stats) {Object.assign(STATE.stats, data.stats);}
-      if (data.logs) {STATE.logs = data.logs;}
+      if (data.settings) {
+        Object.assign(STATE.settings, data.settings);
+      }
+      if (data.stats) {
+        Object.assign(STATE.stats, data.stats);
+      }
+      if (data.logs) {
+        STATE.logs = data.logs;
+      }
+      if (data.devtoolsTabId) {
+        STATE.devtoolsTabId = data.devtoolsTabId;
+      }
     }
   } catch (e) {
     // Игнорируем ошибки
@@ -169,11 +195,13 @@ function loadState() {
 }
 
 // ============================================================
-// 5. РАБОТА С FAVICON
+// 6. РАБОТА С FAVICON
 // ============================================================
 
 function getFaviconUrl(url) {
-  if (!url) {return null;}
+  if (!url) {
+    return null;
+  }
   try {
     const urlObj = new URL(url);
     return `${urlObj.origin}/favicon.ico`;
@@ -183,7 +211,9 @@ function getFaviconUrl(url) {
 }
 
 function getFallbackColor(url) {
-  if (!url) {return '#667eea';}
+  if (!url) {
+    return '#667eea';
+  }
   let hash = 0;
   for (let i = 0; i < url.length; i++) {
     hash = url.charCodeAt(i) + ((hash << 5) - hash);
@@ -206,7 +236,7 @@ function getFallbackColor(url) {
 }
 
 // ============================================================
-// 6. ПРЕДЗАГРУЗКА FAVICON
+// 7. ПРЕДЗАГРУЗКА FAVICON
 // ============================================================
 
 async function preloadFavicons(bookmarks) {
@@ -236,7 +266,7 @@ async function preloadFavicons(bookmarks) {
 }
 
 // ============================================================
-// 7. РАБОТА С ЗАКЛАДКАМИ
+// 8. РАБОТА С ЗАКЛАДКАМИ
 // ============================================================
 
 async function loadAllBookmarksFromExtension() {
@@ -248,14 +278,12 @@ async function loadAllBookmarksFromExtension() {
   try {
     addLog('info', '📑 Загрузка всех закладок...');
 
-    // Логируем исходящий запрос
     logOutgoingMessage('background', 'get_all_bookmarks', { action: 'get_all_bookmarks' });
 
     const response = await chrome.runtime.sendMessage({
       action: 'get_all_bookmarks',
     });
 
-    // Логируем входящий ответ
     logIncomingMessage('background', 'get_all_bookmarks_response', response);
 
     if (response && response.success) {
@@ -293,9 +321,15 @@ function updateBookmarksStats() {
     const bmEl = document.getElementById('bookmarks-bookmarklets');
     const foldersEl = document.getElementById('bookmarks-folders');
 
-    if (totalEl) {totalEl.textContent = total;}
-    if (bmEl) {bmEl.textContent = bookmarklets;}
-    if (foldersEl) {foldersEl.textContent = folders;}
+    if (totalEl) {
+      totalEl.textContent = total;
+    }
+    if (bmEl) {
+      bmEl.textContent = bookmarklets;
+    }
+    if (foldersEl) {
+      foldersEl.textContent = folders;
+    }
   } catch (e) {
     // Игнорируем ошибки обновления статистики
   }
@@ -304,7 +338,9 @@ function updateBookmarksStats() {
 function renderBookmarks() {
   try {
     const container = document.getElementById('bookmarks-list');
-    if (!container) {return;}
+    if (!container) {
+      return;
+    }
 
     const filter = document.getElementById('bookmark-filter');
     const filterValue = filter ? filter.value.toLowerCase() : '';
@@ -316,7 +352,7 @@ function renderBookmarks() {
       filtered = filtered.filter(
         b =>
           b.title.toLowerCase().includes(filterValue) ||
-          (b.url && b.url.toLowerCase().includes(filterValue)),
+          (b.url && b.url.toLowerCase().includes(filterValue))
       );
     }
 
@@ -380,20 +416,24 @@ function renderBookmarks() {
 }
 
 function escapeHtml(text) {
-  if (!text) {return '';}
+  if (!text) {
+    return '';
+  }
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
 }
 
 // ============================================================
-// 8. РАБОТА С ЛОГАМИ
+// 9. РАБОТА С ЛОГАМИ
 // ============================================================
 
 function renderLogs() {
   try {
     const container = document.getElementById('logs-container');
-    if (!container) {return;}
+    if (!container) {
+      return;
+    }
 
     const filter = document.getElementById('log-filter');
     const filterValue = filter ? filter.value : 'all';
@@ -438,7 +478,7 @@ function renderLogs() {
 }
 
 // ============================================================
-// 9. ЭКСПОРТ ЛОГОВ
+// 10. ЭКСПОРТ ЛОГОВ
 // ============================================================
 
 function exportLogs() {
@@ -489,7 +529,7 @@ function exportLogs() {
 }
 
 // ============================================================
-// 10. TOAST УВЕДОМЛЕНИЯ
+// 11. TOAST УВЕДОМЛЕНИЯ
 // ============================================================
 
 let toastTimer = null;
@@ -534,7 +574,9 @@ function showToast(message, type = 'info') {
     toast.textContent = message;
     toast.style.opacity = '1';
 
-    if (toastTimer) {clearTimeout(toastTimer);}
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+    }
     toastTimer = setTimeout(() => {
       toast.style.opacity = '0';
       toastTimer = null;
@@ -545,7 +587,7 @@ function showToast(message, type = 'info') {
 }
 
 // ============================================================
-// 11. ОБНОВЛЕНИЕ СТАТИСТИКИ
+// 12. ОБНОВЛЕНИЕ СТАТИСТИКИ
 // ============================================================
 
 function updateStats() {
@@ -555,17 +597,25 @@ function updateStats() {
     const errors = document.getElementById('stat-errors');
     const cache = document.getElementById('stat-cache');
 
-    if (requests) {requests.textContent = STATE.stats.requests;}
-    if (success) {success.textContent = STATE.stats.success;}
-    if (errors) {errors.textContent = STATE.stats.errors;}
-    if (cache) {cache.textContent = STATE.stats.cacheSize;}
+    if (requests) {
+      requests.textContent = STATE.stats.requests;
+    }
+    if (success) {
+      success.textContent = STATE.stats.success;
+    }
+    if (errors) {
+      errors.textContent = STATE.stats.errors;
+    }
+    if (cache) {
+      cache.textContent = STATE.stats.cacheSize;
+    }
   } catch (e) {
     // Игнорируем ошибки
   }
 }
 
 // ============================================================
-// 12. ОБНОВЛЕНИЕ СТАТУСА
+// 13. ОБНОВЛЕНИЕ СТАТУСА
 // ============================================================
 
 function updateConnectionStatus() {
@@ -573,7 +623,6 @@ function updateConnectionStatus() {
     chrome.runtime
       .sendMessage({ action: 'ping' })
       .then(response => {
-        // Логируем входящий ответ
         logIncomingMessage('background', 'ping_response', response);
 
         const statusEl = document.getElementById('connection-status');
@@ -590,8 +639,12 @@ function updateConnectionStatus() {
             footerStatus.textContent = '🟢 Активно';
             footerStatus.className = 'online';
           }
-          if (badge) {badge.className = 'dot active';}
-          if (statusText) {statusText.textContent = 'Активно';}
+          if (badge) {
+            badge.className = 'dot active';
+          }
+          if (statusText) {
+            statusText.textContent = 'Активно';
+          }
         } else {
           if (statusEl) {
             statusEl.textContent = '🔴 Нет соединения';
@@ -601,8 +654,12 @@ function updateConnectionStatus() {
             footerStatus.textContent = '🔴 Офлайн';
             footerStatus.className = 'offline';
           }
-          if (badge) {badge.className = 'dot inactive';}
-          if (statusText) {statusText.textContent = 'Офлайн';}
+          if (badge) {
+            badge.className = 'dot inactive';
+          }
+          if (statusText) {
+            statusText.textContent = 'Офлайн';
+          }
         }
       })
       .catch(error => {
@@ -621,8 +678,12 @@ function updateConnectionStatus() {
           footerStatus.textContent = '🔴 Офлайн';
           footerStatus.className = 'offline';
         }
-        if (badge) {badge.className = 'dot inactive';}
-        if (statusText) {statusText.textContent = 'Офлайн';}
+        if (badge) {
+          badge.className = 'dot inactive';
+        }
+        if (statusText) {
+          statusText.textContent = 'Офлайн';
+        }
       });
   } catch (e) {
     // Игнорируем ошибки
@@ -634,15 +695,19 @@ function updateTime() {
     const now = new Date();
     const timeEl = document.getElementById('footer-time');
     const updateEl = document.getElementById('last-update');
-    if (timeEl) {timeEl.textContent = now.toLocaleTimeString();}
-    if (updateEl) {updateEl.textContent = now.toLocaleString();}
+    if (timeEl) {
+      timeEl.textContent = now.toLocaleTimeString();
+    }
+    if (updateEl) {
+      updateEl.textContent = now.toLocaleString();
+    }
   } catch (e) {
     // Игнорируем ошибки
   }
 }
 
 // ============================================================
-// 13. ОБРАБОТЧИКИ СОБЫТИЙ
+// 14. ОБРАБОТЧИКИ СОБЫТИЙ (ОБНОВЛЕННАЯ ЧАСТЬ)
 // ============================================================
 
 let timers = [];
@@ -657,7 +722,10 @@ function setupEventListeners() {
       btn.classList.add('active');
       const tab = btn.dataset.tab;
       const panel = document.getElementById(`tab-${tab}`);
-      if (panel) {panel.classList.add('active');}
+      if (panel) {
+        panel.classList.add('active');
+        console.log(`✅ Переключено на вкладку: ${tab}`);
+      }
     });
   });
 
@@ -691,7 +759,9 @@ function setupEventListeners() {
   const resetBtn = document.getElementById('btn-reset-settings');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      if (!confirm('Сбросить все настройки?')) {return;}
+      if (!confirm('Сбросить все настройки?')) {
+        return;
+      }
 
       STATE.settings = {
         bridgeEnabled: true,
@@ -713,13 +783,27 @@ function setupEventListeners() {
       const logLevel = document.getElementById('log-level');
       const maxLogs = document.getElementById('max-logs');
 
-      if (bridgeEnabled) {bridgeEnabled.checked = true;}
-      if (autoRespond) {autoRespond.checked = true;}
-      if (timeout) {timeout.value = 5000;}
-      if (cacheTTL) {cacheTTL.value = 30;}
-      if (debugMode) {debugMode.checked = false;}
-      if (logLevel) {logLevel.value = 'info';}
-      if (maxLogs) {maxLogs.value = 100;}
+      if (bridgeEnabled) {
+        bridgeEnabled.checked = true;
+      }
+      if (autoRespond) {
+        autoRespond.checked = true;
+      }
+      if (timeout) {
+        timeout.value = 5000;
+      }
+      if (cacheTTL) {
+        cacheTTL.value = 30;
+      }
+      if (debugMode) {
+        debugMode.checked = false;
+      }
+      if (logLevel) {
+        logLevel.value = 'info';
+      }
+      if (maxLogs) {
+        maxLogs.value = 100;
+      }
 
       saveState();
       updateStats();
@@ -733,7 +817,9 @@ function setupEventListeners() {
   const clearCacheBtn = document.getElementById('btn-clear-cache');
   if (clearCacheBtn) {
     clearCacheBtn.addEventListener('click', () => {
-      if (!confirm('Очистить кеш закладок?')) {return;}
+      if (!confirm('Очистить кеш закладок?')) {
+        return;
+      }
 
       logOutgoingMessage('background', 'clear_cache', { action: 'clear_cache' });
 
@@ -821,6 +907,105 @@ function setupEventListeners() {
     logFilter.addEventListener('change', renderLogs);
   }
 
+  // ============================================================
+  // ИСПРАВЛЕННАЯ КНОПКА: ОТКРЫТИЕ DEVTOOLS ДЛЯ SERVICE WORKER
+  // ============================================================
+
+  const linkDevtools = document.getElementById('link-devtools');
+  if (linkDevtools) {
+    linkDevtools.addEventListener('click', async e => {
+      e.preventDefault();
+      addLog('info', '🔧 Открытие DevTools для Service Worker...');
+      logOutgoingMessage('extension', 'open_devtools', {});
+
+      try {
+        const extensionId = chrome.runtime.id;
+
+        // СПОСОБ 1: Открыть DevTools через chrome.debugger напрямую
+        try {
+          // Получаем все цели для отладки
+          const targets = await chrome.debugger.getTargets();
+
+          // Ищем Service Worker расширения
+          const swTarget = targets.find(
+            t => t.type === 'service_worker' && t.url.includes(extensionId)
+          );
+
+          if (swTarget && swTarget.webSocketDebuggerUrl) {
+            // Открываем DevTools через специальный URL
+            const devtoolsUrl = `chrome-devtools://devtools/bundled/inspector.html?ws=${swTarget.webSocketDebuggerUrl}`;
+            const devtoolsWindow = window.open(devtoolsUrl, '_blank');
+
+            if (devtoolsWindow) {
+              addLog('success', '✅ DevTools открыт для Service Worker');
+              showToast('✅ DevTools для Service Worker открыт!', 'success');
+              return;
+            }
+          }
+        } catch (debugError) {
+          addLog('debug', `⚠️ Не удалось открыть DevTools напрямую: ${debugError.message}`);
+        }
+
+        // СПОСОБ 2: Открыть через страницу расширения с инспектированием
+        const inspectUrl = `chrome-extension://${extensionId}/manifest.json`;
+
+        // Ищем существующую вкладку
+        const tabs = await chrome.tabs.query({ url: inspectUrl });
+
+        if (tabs && tabs.length > 0) {
+          await chrome.tabs.update(tabs[0].id, { active: true });
+
+          // Открываем DevTools для вкладки
+          try {
+            await chrome.debugger.attach({ tabId: tabs[0].id }, '1.3');
+            chrome.debugger.sendCommand({ tabId: tabs[0].id }, 'Page.enable');
+            addLog('success', '✅ DevTools открыт для существующей вкладки');
+            showToast('✅ DevTools открыт!', 'success');
+            return;
+          } catch (attachError) {
+            addLog('debug', `⚠️ Не удалось прикрепить debugger: ${attachError.message}`);
+          }
+        }
+
+        // СПОСОБ 3: Создаем новую вкладку
+        const tab = await chrome.tabs.create({
+          url: inspectUrl,
+          active: true,
+        });
+
+        // Открываем DevTools для новой вкладки
+        try {
+          await chrome.debugger.attach({ tabId: tab.id }, '1.3');
+          chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.enable');
+          addLog('success', '✅ DevTools автоматически открыт для новой вкладки');
+          showToast('✅ DevTools открыт!', 'success');
+        } catch (attachError) {
+          addLog('info', '💡 Нажмите F12 для открытия DevTools');
+          showToast('💡 Нажмите F12 для открытия DevTools на странице расширения', 'info');
+        }
+
+        STATE.devtoolsTabId = tab.id;
+        saveState();
+      } catch (error) {
+        console.error('❌ Ошибка открытия DevTools:', error);
+        addLog('error', `❌ Ошибка: ${error.message}`);
+        showToast(`❌ Ошибка: ${error.message}`, 'error');
+
+        // СПОСОБ 4: Открываем about:debugging
+        try {
+          await chrome.tabs.create({
+            url: 'about:debugging#/runtime-this',
+            active: true,
+          });
+          addLog('info', '📖 Открыта about:debugging');
+          showToast('📖 Открыта about:debugging', 'info');
+        } catch (fallbackError) {
+          showServiceWorkerInstructions();
+        }
+      }
+    });
+  }
+
   // Инфо: Ссылки
   const linkManager = document.getElementById('link-manager');
   if (linkManager) {
@@ -840,15 +1025,6 @@ function setupEventListeners() {
     });
   }
 
-  const linkDebug = document.getElementById('link-debug');
-  if (linkDebug) {
-    linkDebug.addEventListener('click', e => {
-      e.preventDefault();
-      logOutgoingMessage('browser', 'open_tab', { url: 'about:debugging' });
-      chrome.tabs.create({ url: 'about:debugging' });
-    });
-  }
-
   // Кнопка закрытия
   const closeBtn = document.getElementById('popup-close-btn');
   if (closeBtn) {
@@ -860,7 +1036,9 @@ function setupEventListeners() {
           window.close();
         } catch (e) {
           chrome.windows.getCurrent(win => {
-            if (win) {chrome.windows.remove(win.id);}
+            if (win) {
+              chrome.windows.remove(win.id);
+            }
           });
         }
       });
@@ -875,7 +1053,69 @@ function setupEventListeners() {
 }
 
 // ============================================================
-// 14. ТАЙМЕРЫ
+// 15. ИНСТРУКЦИЯ ПО ОТКРЫТИЮ SERVICE WORKER DEVTOOLS
+// ============================================================
+
+function showServiceWorkerInstructions() {
+  const extensionId = chrome.runtime.id;
+  const message = `
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║              📖 ОТКРЫТИЕ DEVTOOLS ДЛЯ SERVICE WORKER                        ║
+╠═══════════════════════════════════════════════════════════════════════════════╣
+║                                                                               ║
+║  Способ 1 (рекомендуемый):                                                    ║
+║  1. Откройте chrome://extensions/                                            ║
+║  2. Включите "Режим разработчика" (правый верхний угол)                      ║
+║  3. Найдите расширение "Bookmarklet Bridge"                                  ║
+║  4. Нажмите на ссылку "service worker" под названием расширения              ║
+║  5. Откроется DevTools для Service Worker                                    ║
+║                                                                               ║
+║  Способ 2 (через about:debugging):                                           ║
+║  1. Откройте about:debugging#/runtime-this                                   ║
+║  2. Найдите расширение в списке                                              ║
+║  3. Нажмите "inspect" рядом с Service Worker                                 ║
+║                                                                               ║
+║  Способ 3 (через консоль):                                                   ║
+║  1. Выполните в консоли:                                                     ║
+║     chrome.debugger.getTargets().then(t => {                                 ║
+║       const sw = t.find(w => w.type === 'service_worker' &&                  ║
+║                        w.url.includes('${extensionId.slice(0, 8)}'));        ║
+║       if (sw && sw.webSocketDebuggerUrl) {                                   ║
+║         window.open('chrome-devtools://devtools/bundled/inspector.html?ws=' +║
+║                     sw.webSocketDebuggerUrl, '_blank');                      ║
+║       }                                                                      ║
+║     });                                                                      ║
+║                                                                               ║
+║  Способ 4 (через F12):                                                       ║
+║  1. Откройте: chrome-extension://${extensionId}/manifest.json                ║
+║  2. Нажмите F12 для открытия DevTools                                        ║
+║  3. Перейдите в Sources → Content scripts                                    ║
+║  4. Найдите файлы расширения                                                 ║
+║                                                                               ║
+║  📌 После открытия DevTools вы сможете:                                      ║
+║  - Видеть все логи из background.js (Service Worker)                         ║
+║  - Ставить точки останова в background.js                                   ║
+║  - Отслеживать сообщения между компонентами                                  ║
+║  - Дебажить работу расширения                                                ║
+║                                                                               ║
+║  🔗 ID расширения: ${extensionId}                                            ║
+║  🔗 Прямая ссылка: chrome-extension://${extensionId}/manifest.json            ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+  `;
+
+  console.log(message);
+  addLog('info', '📖 Инструкция по открытию DevTools выведена в консоль');
+
+  // Автоматически открываем страницу расширения
+  chrome.tabs.create({
+    url: `chrome-extension://${extensionId}/manifest.json`,
+    active: true,
+  });
+}
+
+// ============================================================
+// 16. ТАЙМЕРЫ
 // ============================================================
 
 function clearTimers() {
@@ -895,7 +1135,7 @@ function setupTimers() {
 }
 
 // ============================================================
-// 15. ОТКРЫТИЕ POPUP ПОВЕРХ ВСЕХ ОКОН (PiP)
+// 17. ОТКРЫТИЕ POPUP ПОВЕРХ ВСЕХ ОКОН (PiP)
 // ============================================================
 
 async function openPopupInPip() {
@@ -939,7 +1179,7 @@ async function openPopupInPip() {
                     display: none !important;
                 }
             </style>
-            </head>`,
+            </head>`
     );
 
     const pipWindow = await window.documentPictureInPicture.requestWindow({
@@ -977,6 +1217,8 @@ async function openPopupInPip() {
             allBookmarks: STATE.allBookmarks || [],
             bookmarklets: STATE.bookmarklets || [],
             folders: STATE.folders || [],
+            instanceSymbols: STATE.instanceSymbols,
+            instanceId: STATE.instanceId,
           },
         };
         pipWindow.postMessage(message, '*');
@@ -998,125 +1240,41 @@ async function openPopupInPip() {
 }
 
 // ============================================================
-// 16. ОБРАБОТКА СООБЩЕНИЙ ОТ BACKGROUND
+// 18. РАБОТА С СИМВОЛАМИ
 // ============================================================
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Логируем входящее сообщение
-  logIncomingMessage('background', message.action || 'unknown', message);
+function initSymbolsFromUrl() {
+  const symbolsData = getInstanceSymbolsFromUrl();
+  if (symbolsData) {
+    STATE.instanceId = symbolsData.instanceId;
+    STATE.instanceSymbols = symbolsData.symbols;
 
-  if (message.action === 'log_update') {
-    addLog(message.level, message.message, message.data);
-    sendResponse({ received: true });
-    return true;
-  }
+    addLog('info', '🔑 Получены символы инстанса', {
+      instanceId: STATE.instanceId,
+      symbols: Object.keys(STATE.instanceSymbols),
+    });
 
-  if (message.action === 'stats_update') {
-    Object.assign(STATE.stats, message.stats);
-    updateStats();
-    sendResponse({ received: true });
-    return true;
-  }
-
-  if (message.action === 'bookmark_update') {
-    loadAllBookmarksFromExtension();
-    sendResponse({ received: true });
-    return true;
-  }
-
-  if (message.action === 'connection_status') {
-    updateConnectionStatus();
-    sendResponse({ received: true });
-    return true;
-  }
-
-  if (message.action === 'tab_updated') {
-    addLog('info', `🔄 Вкладка обновлена: ${message.tab?.title || '—'}`, message);
-    updateCurrentTabDisplay(message.tab, message.bookmark);
-
-    if (message.bookmark) {
-      addLog('info', `   📌 Закладка: ${message.bookmark.title}`, message.bookmark);
-      logBookmarkRequestDetails(message.bookmark, {
-        url: message.tab?.url,
-        timestamp: Date.now(),
-        source: 'tab_updated',
-      });
+    const instanceIdEl = document.getElementById('instance-id-display');
+    if (instanceIdEl) {
+      instanceIdEl.textContent = STATE.instanceId.slice(-8);
+      instanceIdEl.title = STATE.instanceId;
     }
-    sendResponse({ received: true });
-    return true;
-  }
 
-  if (message.action === 'tab_closed') {
-    addLog('info', `🗑️ Вкладка закрыта: ${message.tabId}`, message);
-    currentTabInfo = null;
-    currentBookmarkInfo = null;
-    const statusText = document.getElementById('status-text');
-    if (statusText) {statusText.textContent = '—';}
-    sendResponse({ received: true });
-    return true;
-  }
-
-  if (message.action === 'bookmarks_loaded') {
-    addLog(
-      'info',
-      `📑 Закладки загружены: ${message.stats?.total || 0} всего, ${message.stats?.bookmarklets || 0} букмарклетов`,
-      message,
-    );
-    if (message.bookmarklets) {
-      addLog(
-        'debug',
-        `📌 Букмарклеты: ${message.bookmarklets.map(b => b.title).join(', ')}`,
-        message.bookmarklets,
-      );
+    const symbolsCountEl = document.getElementById('symbols-count');
+    if (symbolsCountEl) {
+      symbolsCountEl.textContent = Object.keys(STATE.instanceSymbols).length;
     }
-    sendResponse({ received: true });
+
+    console.log('🔑 Символы инстанса:', STATE.instanceSymbols);
     return true;
   }
 
-  if (message.action === 'bookmark_request') {
-    logBookmarkRequestDetails(message.bookmarkData, message.requestDetails);
-    sendResponse({ received: true });
-    return true;
-  }
-
+  addLog('debug', 'ℹ️ Символы не найдены в URL');
   return false;
-});
-
-// ============================================================
-// 17. ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ЗАКЛАДОК
-// ============================================================
-
-function logBookmarkRequestDetails(bookmarkData, requestDetails) {
-  const title = bookmarkData?.title || 'Неизвестная закладка';
-  const type = bookmarkData?.type || 'unknown';
-  const id = bookmarkData?.id || '—';
-  const parent = bookmarkData?.parent?.title || 'корень';
-  const path = bookmarkData?.path?.join(' > ') || '—';
-  const isBookmarklet = bookmarkData?.isBookmarklet || false;
-  const siblingsCount = bookmarkData?.siblings?.length || 0;
-  const features = bookmarkData?.features || [];
-  const version = bookmarkData?.version || '1.0.0';
-  const customConfig = bookmarkData?.customConfig || {};
-
-  const logData = {
-    title,
-    type,
-    id,
-    parent,
-    path,
-    isBookmarklet,
-    siblingsCount,
-    features,
-    version,
-    customConfig,
-    requestDetails,
-  };
-
-  addLog('debug', `📌 ДЕТАЛИ ЗАКЛАДКИ: "${title}"`, logData);
 }
 
 // ============================================================
-// 18. ИНИЦИАЛИЗАЦИЯ С ОЧИСТКОЙ ЛОГОВ
+// 19. ИНИЦИАЛИЗАЦИЯ
 // ============================================================
 
 async function init() {
@@ -1126,7 +1284,7 @@ async function init() {
   }
   STATE.initialized = true;
 
-  // ОЧИЩАЕМ ЛОГИ ПРИ ОТКРЫТИИ
+  // Очищаем логи при открытии
   STATE.logs = [];
 
   loadState();
@@ -1139,13 +1297,27 @@ async function init() {
   const logLevel = document.getElementById('log-level');
   const maxLogs = document.getElementById('max-logs');
 
-  if (bridgeEnabled) {bridgeEnabled.checked = STATE.settings.bridgeEnabled;}
-  if (autoRespond) {autoRespond.checked = STATE.settings.autoRespond;}
-  if (timeout) {timeout.value = STATE.settings.timeout;}
-  if (cacheTTL) {cacheTTL.value = STATE.settings.cacheTTL;}
-  if (debugMode) {debugMode.checked = STATE.settings.debugMode;}
-  if (logLevel) {logLevel.value = STATE.settings.logLevel;}
-  if (maxLogs) {maxLogs.value = STATE.settings.maxLogs;}
+  if (bridgeEnabled) {
+    bridgeEnabled.checked = STATE.settings.bridgeEnabled;
+  }
+  if (autoRespond) {
+    autoRespond.checked = STATE.settings.autoRespond;
+  }
+  if (timeout) {
+    timeout.value = STATE.settings.timeout;
+  }
+  if (cacheTTL) {
+    cacheTTL.value = STATE.settings.cacheTTL;
+  }
+  if (debugMode) {
+    debugMode.checked = STATE.settings.debugMode;
+  }
+  if (logLevel) {
+    logLevel.value = STATE.settings.logLevel;
+  }
+  if (maxLogs) {
+    maxLogs.value = STATE.settings.maxLogs;
+  }
 
   updateStats();
   renderLogs();
@@ -1157,14 +1329,23 @@ async function init() {
     extensionId.textContent = chrome.runtime.id?.substring(0, 8) || 'unknown';
   }
 
-  // Логируем запуск
+  // Инициализация символов из URL
+  const hasSymbols = initSymbolsFromUrl();
+  if (hasSymbols) {
+    addLog('info', '🔑 Символы инстанса загружены', {
+      instanceId: STATE.instanceId,
+      symbolsCount: Object.keys(STATE.instanceSymbols).length,
+    });
+  }
+
   addLog('info', '📦 Расширение Bookmarklet Bridge запущено', {
     version: '1.0.0',
     timestamp: new Date().toISOString(),
+    hasSymbols: hasSymbols,
   });
   addLog('info', '📌 Версия: 1.0.0');
+  addLog('info', '🔧 Кнопка DevTools открывает Service Worker DevTools');
 
-  // Логируем исходящий запрос на загрузку закладок
   logOutgoingMessage('background', 'get_all_bookmarks', { action: 'get_all_bookmarks' });
 
   await loadAllBookmarksFromExtension();
@@ -1176,14 +1357,24 @@ async function init() {
   saveState();
 }
 
+// ============================================================
+// 20. ЗАПУСК
+// ============================================================
+
 document.addEventListener('DOMContentLoaded', () => {
   init();
 });
 
-console.log('📦 Bookmarklet Bridge Popup загружен');
-console.log('📋 Логи очищены при открытии');
-console.log('📋 Все входящие/исходящие сообщения логируются');
+console.log('╔═══════════════════════════════════════════════════════════════════════════════╗');
+console.log('║                    📦 Bookmarklet Bridge Popup                               ║');
+console.log('╠═══════════════════════════════════════════════════════════════════════════════╣');
+console.log('║  📋 Логи очищены при открытии                                               ║');
+console.log('║  📋 Все входящие/исходящие сообщения логируются                             ║');
+console.log('║  📋 Поддержка приватных символов включена                                   ║');
+console.log('║  🔧 Кнопка DevTools открывает Service Worker DevTools                       ║');
+console.log('╚═══════════════════════════════════════════════════════════════════════════════╝');
 
+// Экспорт для отладки
 window.__bookmarkBridge = {
   loadAllBookmarksFromExtension,
   getAllBookmarks: () => STATE.allBookmarks || [],
@@ -1201,4 +1392,45 @@ window.__bookmarkBridge = {
   },
   getFaviconUrl,
   preloadFavicons,
+  switchTab: tabName => {
+    const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+    if (btn) {
+      btn.click();
+      return true;
+    }
+    return false;
+  },
+  getActiveTab: () => {
+    const active = document.querySelector('.tab-btn.active');
+    return active ? active.dataset.tab : null;
+  },
+  getInstanceSymbols: () => STATE.instanceSymbols,
+  getInstanceId: () => STATE.instanceId,
+  initSymbolsFromUrl,
+  showServiceWorkerInstructions,
+  openServiceWorkerDevTools: async () => {
+    try {
+      const targets = await chrome.debugger.getTargets();
+      const swTarget = targets.find(
+        t => t.type === 'service_worker' && t.url.includes(chrome.runtime.id)
+      );
+
+      if (swTarget && swTarget.webSocketDebuggerUrl) {
+        const devtoolsUrl = `chrome-devtools://devtools/bundled/inspector.html?ws=${swTarget.webSocketDebuggerUrl}`;
+        window.open(devtoolsUrl, '_blank');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('❌ Ошибка открытия DevTools:', e);
+      return false;
+    }
+  },
+  openDevTools: async () => {
+    const link = document.getElementById('link-devtools');
+    if (link) {
+      link.click();
+    }
+  },
+  getDevtoolsTabId: () => STATE.devtoolsTabId,
 };

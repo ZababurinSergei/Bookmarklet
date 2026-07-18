@@ -12,16 +12,17 @@
 <div id="popup-container">
     <!-- Вкладки -->
     <div class="tabs">
-        <button class="tab-btn active" data-tab="settings">⚙️ Настройки</button>
+        <button class="tab-btn" data-tab="settings">⚙️ Настройки</button>
         <button class="tab-btn" data-tab="bookmarks">📑 Закладки</button>
-        <button class="tab-btn" data-tab="logs">📋 Логи</button>
+        <button class="tab-btn active" data-tab="logs">📋 Логи</button>
         <button class="tab-btn" data-tab="info">ℹ️ Инфо</button>
+        <button class="tab-btn" data-tab="bookmarklets">📌 Букмарклеты</button>
     </div>
 
     <!-- Содержимое вкладок -->
     <div class="tab-content">
         <!-- Вкладка: Настройки -->
-        <div class="tab-panel active" id="tab-settings">
+        <div class="tab-panel" id="tab-settings">
             <div class="settings-scroll">
                 <div class="settings-group">
                     <h3>🔌 Параметры подключения</h3>
@@ -29,7 +30,7 @@
                     <div class="setting-item">
                         <label for="bridge-enabled">Включить мост</label>
                         <div class="toggle-switch">
-                            <input type="checkbox" id="bridge-enabled" checked>
+                            <input type="checkbox" id="bridge-enabled" checked="">
                             <span class="slider"></span>
                         </div>
                         <span class="setting-desc">Разрешить букмарклетам запрашивать данные</span>
@@ -38,7 +39,7 @@
                     <div class="setting-item">
                         <label for="auto-respond">Авто-ответ</label>
                         <div class="toggle-switch">
-                            <input type="checkbox" id="auto-respond" checked>
+                            <input type="checkbox" id="auto-respond" checked="">
                             <span class="slider"></span>
                         </div>
                         <span class="setting-desc">Автоматически отвечать на запросы букмарклетов</span>
@@ -74,7 +75,7 @@
                         <select id="log-level">
                             <option value="error">❌ Только ошибки</option>
                             <option value="warn">⚠️ Предупреждения</option>
-                            <option value="info" selected>ℹ️ Информация</option>
+                            <option value="info" selected="">ℹ️ Информация</option>
                             <option value="debug">🔍 Отладка</option>
                             <option value="trace">🐛 Трассировка</option>
                         </select>
@@ -138,7 +139,7 @@
         </div>
 
         <!-- Вкладка: Логи -->
-        <div class="tab-panel" id="tab-logs">
+        <div class="tab-panel active" id="tab-logs">
             <div class="logs-toolbar">
                 <button class="btn btn-secondary" id="btn-clear-logs">🗑️ Очистить</button>
                 <button class="btn btn-secondary" id="btn-export-logs">📤 Экспорт</button>
@@ -212,8 +213,8 @@
                         📌 Закрепить поверх всех окон
                     </button>
                     <span style="font-size:10px;color:#636e72;display:block;margin-top:4px;text-align:center;">
-                            Окно будет всегда поверх всех окон системы
-                        </span>
+                        Окно будет всегда поверх всех окон системы
+                    </span>
                 </div>
 
                 <div class="info-group">
@@ -249,11 +250,84 @@
                 </div>
             </div>
         </div>
+
+        <!-- Вкладка: Букмарклеты (новая) -->
+        <div class="tab-panel" id="tab-bookmarklets">
+            <div class="bookmarklets-scroll">
+                <!-- Управление букмарклетами -->
+                <div class="settings-group">
+                    <h3>📌 Управление букмарклетами</h3>
+                    <div class="bookmarklet-actions">
+                        <button class="btn btn-primary" id="btn-generate-all">📦 Создать все стандартные</button>
+                        <button class="btn btn-success" id="btn-update-with-hash">🔄 Обновить с проверкой</button>
+                        <button class="btn btn-secondary" id="btn-clear-bookmarklet-cache">🗑️ Очистить кеш</button>
+                        <button class="btn btn-danger" id="btn-delete-all-bookmarklets">🗑️ Удалить все</button>
+                    </div>
+                </div>
+
+                <!-- Статистика кеша -->
+                <div class="settings-group">
+                    <h3>📊 Статистика кеша букмарклетов</h3>
+                    <div class="cache-stats-grid" id="cache-stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">В кеше</span>
+                            <span class="stat-value" id="cache-total">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Попаданий</span>
+                            <span class="stat-value success" id="cache-hit-rate">0%</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Устаревших</span>
+                            <span class="stat-value error" id="cache-orphaned">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Версия кеша</span>
+                            <span class="stat-value" id="cache-version">2.0.0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Список сгенерированных букмарклетов -->
+                <div class="settings-group">
+                    <h3>📋 Сгенерированные букмарклеты</h3>
+                    <div class="bookmarklets-list" id="bookmarklets-list">
+                        <div class="loading">⏳ Загрузка...</div>
+                    </div>
+                </div>
+
+                <!-- Код для копирования -->
+                <div class="settings-group">
+                    <h3>📋 Код букмарклета</h3>
+                    <div style="display:flex;gap:6px;margin-bottom:6px;">
+                        <select id="bookmarklet-select" style="flex:1;padding:4px 8px;border:1px solid rgba(255,255,255,0.1);border-radius:4px;background:rgba(0,0,0,0.3);color:#e0e0e0;font-size:12px;">
+                            <option value="">Выберите букмарклет</option>
+                        </select>
+                        <button class="btn btn-secondary" id="btn-copy-bookmarklet">📋 Копировать</button>
+                    </div>
+                    <div class="code-block" id="bookmarklet-code-display" style="
+                        background: rgba(0,0,0,0.4);
+                        padding: 8px 12px;
+                        border-radius: 6px;
+                        font-family: 'Courier New', monospace;
+                        font-size: 10px;
+                        overflow-x: auto;
+                        white-space: pre-wrap;
+                        color: #7bed9f;
+                        border: 1px solid rgba(255,255,255,0.05);
+                        max-height: 120px;
+                        overflow-y: auto;
+                    ">
+                        Выберите букмарклет из списка
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Подвал -->
     <div class="footer">
-        <span id="footer-status">🟢 Активно</span>
+        <span id="footer-status" class="online">🟢 Активно</span>
         <span id="footer-time"></span>
     </div>
 </div>
@@ -261,5 +335,6 @@
 <!-- Все скрипты вынесены в отдельные файлы -->
 <script src="popup-init.js"></script>
 <script src="popup.js" type="module"></script>
+
 </body>
 </html>

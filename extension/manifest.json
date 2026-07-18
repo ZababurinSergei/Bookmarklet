@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Bookmarklet Bridge",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Мост между букмарклетами и расширением для получения данных закладок",
   "permissions": ["bookmarks", "storage", "activeTab", "tabs", "system.display"],
   "host_permissions": ["http://localhost/*", "https://*/*", "http://*/*", "<all_urls>"],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "content_scripts": [
     {
@@ -17,7 +18,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["favicon.ico", "favicon.png", "popup.html", "popup.js", "popup.css"],
+      "resources": ["favicon.png", "favicon.ico", "popup.html", "popup.js", "popup.css"],
       "matches": ["<all_urls>"]
     }
   ],

@@ -262,7 +262,9 @@ javascript: (function () {
   
     // packages/mtproto-mqtt-gateway/metaflow/02-config-generator/web/Bookmarklet/main:javascript/bookmarklet.mjs
   
-  javascript: (function () {
+  javascript: (function (...args) {
+  
+    console.log('INIT_THIS', args);
     function detectName() {
       const scripts = document.querySelectorAll('script[data-bookmarklet-name]');
       console.log('-------------------', scripts);
@@ -295,6 +297,7 @@ javascript: (function () {
     }
     const name = detectName();
     const type = detectType();
+    console.log('----------------------++++++++++++++++++++', name, type);
     const id = 'bm-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
     localStorage.setItem('bookmarklet-name', name);
     const files = {
